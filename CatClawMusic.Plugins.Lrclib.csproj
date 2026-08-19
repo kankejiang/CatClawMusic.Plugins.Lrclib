@@ -14,6 +14,11 @@
     <!-- 注意：本项目位于 D:\Code\CatClawMusic.Plugins.Lrclib，CatClawMusic.Core 在其同级
          CatClawMusic\ 目录下，因此相对路径为 ..\CatClawMusic\CatClawMusic.Core -->
     <ProjectReference Include="..\CatClawMusic\CatClawMusic.Core\CatClawMusic.Core.csproj" />
+    <!-- 手动匹配入口页（IViewContributorPlugin）：纯 C# 代码构建 UI，不用 XAML。
+         版本与宿主一致（10.0.20），CopyLocalLockFileAssemblies=false 保证不随插件分发。 -->
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.20" />
+    <!-- MVVM Toolkit：手动匹配页 ViewModel 使用 ObservableObject/RelayCommand -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
   <ItemGroup>

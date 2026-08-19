@@ -11,12 +11,17 @@ namespace CatClawMusic.Plugins.Lrclib;
 /// （同名 .lrc、内嵌歌词都找不到时才调用本插件），装上启用即生效，零宿主改动。
 /// </para>
 /// <para>
+/// 同时实现 <see cref="IViewContributorPlugin"/>：向宿主贡献一个「歌词匹配」入口页，
+/// 用户可手动搜索 LRCLIB 候选并指定某首歌使用哪份歌词（覆盖记录持久化本地）。
+/// </para>
+/// <para>
 /// 数据源：https://lrclib.net（开源、免费、无 API Key），按 歌名/艺人/时长 匹配同步歌词。
 /// </para>
 /// </summary>
-public class LrclibLyricsPlugin : ILyricsProviderPlugin
+public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
 {
     private readonly LrclibApiClient _client = new();
+    private readonly OverrideStore _overrideStore = new();
 
     /// <summary>内存缓存（LRCLIB 限流 50 次/分钟/IP，重复播放/换页应命中缓存）</summary>
     private readonly ConcurrentDictionary<string, LrcLyrics?> _cache = new();
@@ -27,12 +32,26 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin
 
     public string PluginId => "lrclib";
     public string Name => "LRCLIB 在线歌词";
-    public string Version => "1.0.0";
+    public string Version => "1.1.0";
     public string Author => "CatClawMusic";
-    public string Description => "LRCLIB 开放歌词库：按歌名/艺人/时长在线匹配同步歌词，补齐本地歌曲歌词";
+    public string Description => "LRCLIB 开放歌词库：按歌名/艺人/时长在线匹配同步歌词；支持手动匹配入口页指定歌词";
     public List<string> Capabilities => new() { "lyrics" };
 
     public bool IsAvailable => true;
+
+    // ── IViewContributorPlugin：发现页「歌词匹配」入口 ──
+
+    /// <summary>发现页入口显示标题</summary>
+    public string EntryTitle => "歌词匹配";
+
+    /// <summary>发现页入口图标（Emoji）</summary>
+    public string EntryIcon => "📝";
+
+    /// <summary>
+    /// 创建手动匹配入口页。宿主在用户点击入口时调用，返回的页面会被 Push 到导航栈。
+    /// </summary>
+    public object CreateEntryPage(IServiceProvider services)
+        => new ManualMatchPage(new ManualMatchViewModel(_client, _overrideStore));
 
     public Task InitializeAsync() => Task.CompletedTask;
 
@@ -43,8 +62,9 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin
     }
 
     /// <summary>
-    /// 获取指定歌曲歌词。匹配策略：
+    /// 获取指定歌曲歌词。匹配策略（优先级从高到低）：
     /// <list type="number">
+    ///   <item>手动覆盖记录：用户在「歌词匹配」入口页指定的 LRCLIB 曲目（不联网，秒返回）</item>
     ///   <item>LRCLIB 精确匹配 /get（歌名+艺人+专辑+时长）</item>
     ///   <item>搜索 /search 取分最高的候选（同步歌词优先 + 时长相近加权）</item>
     /// </list>
@@ -59,16 +79,27 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin
         var album = string.IsNullOrWhiteSpace(song.Album) ? null : song.Album.Trim();
         var durationSeconds = NormalizeDuration(song.Duration);
 
+        // 0) 手动覆盖：用户指定的歌词最高优先。不缓存——增删覆盖要立即生效，
+        //    且覆盖命中零网络开销（仅是本地文件 mtime 比较），无需走缓存。
+        var overridden = _overrideStore.Get(title, artist);
+        if (overridden != null)
+        {
+            return ToLyrics(overridden, durationSeconds);
+        }
+
         var cacheKey = BuildCacheKey(title, artist, album, durationSeconds);
         if (_cache.TryGetValue(cacheKey, out var cached)) return cached;
 
         LrcLyrics? result = null;
 
         // 1) 精确匹配（LRCLIB 提供 duration 参数时最可靠）
-        var exact = await _client.GetAsync(title, artist, album, durationSeconds);
-        if (exact != null)
+        if (result == null)
         {
-            result = ToLyrics(exact, durationSeconds);
+            var exact = await _client.GetAsync(title, artist, album, durationSeconds);
+            if (exact != null)
+            {
+                result = ToLyrics(exact, durationSeconds);
+            }
         }
 
         // 2) 搜索兜底：按评分挑最佳候选
@@ -82,6 +113,7 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin
             }
         }
 
+        // 仅缓存自动匹配结果（覆盖路径已提前返回）
         AddToCache(cacheKey, result);
         return result;
     }
