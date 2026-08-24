@@ -1,0 +1,20 @@
+{
+  "id": "com.kugou.source",
+  "name": "酷狗音乐",
+  "versionCode": 5,
+  "versionName": "0.3.0",
+  "author": "Replica0110",
+  "description": "酷狗搜索源插件",
+  "apiVersion": 4,
+  "includeDirs": [
+    "lib"
+  ],
+  "entry": "source.js",
+  "icon": "icon.png",
+  "capabilities": [
+    "searchSongs",
+    "getLyrics",
+    "searchCovers"
+  ],
+  "minHostApiVersion": 1
+}

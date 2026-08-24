@@ -23,6 +23,9 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
     private readonly LrclibApiClient _client = new();
     private readonly OverrideStore _overrideStore = new();
 
+    /// <summary>Lyrico JS 歌词源宿主（netease/qq/kugou/soda/apple），作为 LRCLIB 的兜底源。</summary>
+    private readonly Lrclib.Lyrico.LyricoLyricsHub _lyrico = new();
+
     /// <summary>内存缓存（LRCLIB 限流 50 次/分钟/IP，重复播放/换页应命中缓存）</summary>
     private readonly ConcurrentDictionary<string, LrcLyrics?> _cache = new();
     private const int MaxCacheEntries = 300;
@@ -32,9 +35,9 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
 
     public string PluginId => "lrclib";
     public string Name => "LRCLIB 在线歌词";
-    public string Version => "1.1.0";
+    public string Version => "1.2.0";
     public string Author => "CatClawMusic";
-    public string Description => "LRCLIB 开放歌词库：按歌名/艺人/时长在线匹配同步歌词；支持手动匹配入口页指定歌词";
+    public string Description => "LRCLIB 开放歌词库 + Lyrico JS 兜底源（网易云/QQ/酷狗/汽水/Apple）：在线匹配同步歌词；支持手动匹配入口页指定歌词";
     public List<string> Capabilities => new() { "lyrics" };
 
     public bool IsAvailable => true;
@@ -58,6 +61,7 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
     public Task ShutdownAsync()
     {
         _cache.Clear();
+        _lyrico.Dispose();
         return Task.CompletedTask;
     }
 
@@ -111,6 +115,13 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
                 var best = PickBestMatch(candidates, title, durationSeconds);
                 if (best != null) result = ToLyrics(best, durationSeconds);
             }
+        }
+
+        // 3) Lyrico JS 源兜底：LRCLIB 命不中时，依次尝试内嵌的网易云/QQ/酷狗/汽水/Apple 源。
+        //    这层有真实网络与加解密开销，只在前面都失败才走，并整体参与缓存。
+        if (result == null)
+        {
+            result = await _lyrico.GetAsync(title, artist, album, durationSeconds);
         }
 
         // 仅缓存自动匹配结果（覆盖路径已提前返回）

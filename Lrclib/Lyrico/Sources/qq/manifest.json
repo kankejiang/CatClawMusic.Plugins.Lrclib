@@ -1,0 +1,51 @@
+{
+  "id": "com.qqmusic.source",
+  "name": "QQ音乐",
+  "versionCode": 5,
+  "versionName": "0.3.0",
+  "author": "Replica0110",
+  "description": "QQ音乐搜索源插件",
+  "apiVersion": 4,
+  "includeDirs": [
+    "lib"
+  ],
+  "icon": "icon.png",
+  "entry": "source.js",
+  "capabilities": [
+    "searchSongs",
+    "getLyrics",
+    "searchCovers"
+  ],
+  "configFields": [
+    {
+      "key": "cover_size",
+      "title": "封面大小",
+      "summary": "QQ 音乐封面图片尺寸",
+      "type": "dropdown",
+      "required": true,
+      "defaultValue": "1200",
+      "options": [
+        {
+          "value": "500",
+          "label": "500 x 500"
+        },
+        {
+          "value": "800",
+          "label": "800 x 800"
+        },
+        {
+          "value": "1200",
+          "label": "1200 x 1200"
+        }
+      ]
+    },
+    {
+      "key": "replaygain",
+      "title": "回放增益",
+      "summary": "搜索歌曲时获取回放增益信息",
+      "type": "switch",
+      "defaultValue": true
+    }
+  ],
+  "minHostApiVersion": 1
+}

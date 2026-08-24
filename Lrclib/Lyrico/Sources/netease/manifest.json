@@ -1,0 +1,44 @@
+{
+  "id": "com.neteasecloudmusic.source",
+  "name": "网易云音乐",
+  "versionCode": 7,
+  "versionName": "0.3.1",
+  "author": "Replica0110",
+  "description": "网易云搜索源插件",
+  "apiVersion": 4,
+  "includeDirs": [
+    "lib"
+  ],
+  "entry": "source.js",
+  "icon": "icon.png",
+  "capabilities": [
+    "searchSongs",
+    "getLyrics",
+    "searchCovers"
+  ],
+  "minHostApiVersion": 3,
+  "configFields": [
+    {
+      "key": "comment_content",
+      "title": "注释写入内容",
+      "summary": "控制搜索结果写入注释字段的内容",
+      "group": "元数据",
+      "type": "dropdown",
+      "defaultValue": "alias",
+      "options": [
+        {
+          "value": "none",
+          "label": "不写入"
+        },
+        {
+          "value": "alias",
+          "label": "歌曲别名"
+        },
+        {
+          "value": "netease_163_key",
+          "label": "网易云 163key"
+        }
+      ]
+    }
+  ]
+}
