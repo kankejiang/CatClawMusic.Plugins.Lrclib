@@ -9,7 +9,7 @@
     <AssemblyName>CatClawMusic.Plugins.Lrclib</AssemblyName>
     <!-- 插件以独立 DLL 交付，不携带依赖（Core/MAUI 由宿主提供） -->
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
-    <!-- tools/ 下的测试工程（LyricoSmokeTest 等）不进插件编译（否则其 obj 生成物会被默认 **/*.cs 通配卷进来） -->
+    <!-- tools/ 下的测试工程不进插件编译（否则其 obj 生成物会被默认 **/*.cs 通配卷进来） -->
     <DefaultItemExcludes>$(DefaultItemExcludes);tools\**</DefaultItemExcludes>
   </PropertyGroup>
 
@@ -22,9 +22,11 @@
     <PackageReference Include="Microsoft.Maui.Controls" Version="11.0.0-preview.7.26406.9" />
     <!-- MVVM Toolkit：手动匹配页 ViewModel 使用 ObservableObject/RelayCommand -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <!-- Jint JS 引擎：运行 Lyrico 歌词源插件的 source.js（含 lib/ 辅助脚本）。
-         以嵌入资源分发（不随插件输出 DLL），编译期用其 API；运行期由插件 AssemblyResolve
-         从嵌入资源流加载 Jint.dll + Acornima.dll，与 CatClawMusic.Plugins.LxSource 同方案。 -->
+    <!-- Jint JS 引擎：运行 外部 Lyrico 歌词源插件 的 source.js（含 lib/ 辅助脚本）。
+         引擎以嵌入资源分发（不随插件输出 DLL），编译期用其 API；运行期由插件
+         LyricoScriptEngineLoader 从嵌入资源流加载 Jint.dll + Acornima.dll。
+         注意：源插件本身不内置在任何嵌入资源，由用户在 Plugin/LyricoSources/ 下
+         放入 Lyrico 格式的插件目录，实现"外部加载、宿主零改动、兼容 Lyrico 插件"。 -->
     <PackageReference Include="Jint" Version="4.16.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>Compile;Analyzers</IncludeAssets>
@@ -38,7 +40,7 @@
   </ItemGroup>
 
   <!-- 把 Jint.dll / Acornima.dll 嵌入插件程序集资源（LogicalName 固定，运行期按名读取）。
-       net10.0 优先，回落 net8.0（net10 可加载 net8 程序集）。 -->
+       仅嵌入 JS 引擎，不嵌入 Lyrico 官方源插件。 -->
   <ItemGroup>
     <EmbeddedResource Include="$(PkgJint)\lib\net10.0\Jint.dll"
                      Condition="'$(PkgJint)' != '' And Exists('$(PkgJint)\lib\net10.0\Jint.dll')"
@@ -52,13 +54,6 @@
     <EmbeddedResource Include="$(PkgAcornima)\lib\net8.0\Acornima.dll"
                      Condition="'$(PkgAcornima)' != '' And !Exists('$(PkgAcornima)\lib\net10.0\Acornima.dll') And Exists('$(PkgAcornima)\lib\net8.0\Acornima.dll')"
                      LogicalName="Acornima.dll" />
-  </ItemGroup>
-
-  <!-- Lyrico 歌词源插件（apple/kugou/netease/qq/soda）：整目录嵌入为程序集资源，
-       运行期按 LogicalName（Lyrico.Sources.{plugin}\{相对路径}）读取，零外部依赖。 -->
-  <ItemGroup>
-    <EmbeddedResource Include="Lrclib\Lyrico\Sources\**\*"
-                      LogicalName="Lyrico.Sources.%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

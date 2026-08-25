@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using CatClawMusic.Core.Interfaces;
 using CatClawMusic.Core.Models;
+using CatClawMusic.Plugins.Lrclib.Lyrico;
 
 namespace CatClawMusic.Plugins.Lrclib;
 
@@ -16,6 +17,7 @@ namespace CatClawMusic.Plugins.Lrclib;
 /// </para>
 /// <para>
 /// 数据源：https://lrclib.net（开源、免费、无 API Key），按 歌名/艺人/时长 匹配同步歌词。
+/// 本插件不内置任何 JS 歌词源引擎，数据源经宿主插件机制外置，保持职责单一。
 /// </para>
 /// </summary>
 public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
@@ -23,8 +25,8 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
     private readonly LrclibApiClient _client = new();
     private readonly OverrideStore _overrideStore = new();
 
-    /// <summary>Lyrico JS 歌词源宿主（netease/qq/kugou/soda/apple），作为 LRCLIB 的兜底源。</summary>
-    private readonly Lrclib.Lyrico.LyricoLyricsHub _lyrico = new();
+    /// <summary>Lyrico 外部 JS 歌词源宿主（用户放入 Plugin/LyricoSources/ 的源插件），作为 LRCLIB 的兜底源。</summary>
+    private readonly LyricoLyricsHub _lyrico = new();
 
     /// <summary>内存缓存（LRCLIB 限流 50 次/分钟/IP，重复播放/换页应命中缓存）</summary>
     private readonly ConcurrentDictionary<string, LrcLyrics?> _cache = new();
@@ -35,26 +37,50 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
 
     public string PluginId => "lrclib";
     public string Name => "LRCLIB 在线歌词";
-    public string Version => "1.2.0";
+    public string Version => "1.3.0";
     public string Author => "CatClawMusic";
-    public string Description => "LRCLIB 开放歌词库 + Lyrico JS 兜底源（网易云/QQ/酷狗/汽水/Apple）：在线匹配同步歌词；支持手动匹配入口页指定歌词";
+    public string Description => "LRCLIB 开放歌词库 + 外部 Lyrico JS 源兜底（用户放入 Plugin/LyricoSources/ 的源插件）；提供 Lyrico 音乐库/手动匹配入口页";
     public List<string> Capabilities => new() { "lyrics" };
 
     public bool IsAvailable => true;
 
-    // ── IViewContributorPlugin：发现页「歌词匹配」入口 ──
+    // ── IViewContributorPlugin：发现页「Lyrico」入口（音乐库主框架）──
 
     /// <summary>发现页入口显示标题</summary>
-    public string EntryTitle => "歌词匹配";
+    public string EntryTitle => "Lyrico";
 
     /// <summary>发现页入口图标（Emoji）</summary>
-    public string EntryIcon => "📝";
+    public string EntryIcon => "🎵";
 
     /// <summary>
-    /// 创建手动匹配入口页。宿主在用户点击入口时调用，返回的页面会被 Push 到导航栈。
+    /// 创建插件主入口页（Lyrico 风格音乐库主页）。
+    /// 宿主在用户点击入口时调用：注入宿主 <see cref="IServiceProvider"/> 到 <see cref="PluginHost"/>，
+    /// 供插件所有页面解析宿主服务（音乐库 / 音频文件读写 / 播放等）。
     /// </summary>
     public object CreateEntryPage(IServiceProvider services)
-        => new ManualMatchPage(new ManualMatchViewModel(_client, _overrideStore));
+    {
+        PluginHost.Services = services;
+
+        var library = PluginHost.Library;
+        if (library == null)
+        {
+            // 宿主未提供音乐库服务：给出友好提示而非空白页
+            return new ContentPage
+            {
+                Title = "Lyrico",
+                BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838"),
+                Content = new Label
+                {
+                    Text = "宿主未提供音乐库服务（IMusicLibraryService）",
+                    TextColor = ThemeHelper.Color("TextSecondaryColor", "#C2C6E4"),
+                    HorizontalOptions = LayoutOptions.Center,
+                    VerticalOptions = LayoutOptions.Center,
+                },
+            };
+        }
+
+        return new MusicLibraryPage(new MusicLibraryViewModel(library));
+    }
 
     public Task InitializeAsync() => Task.CompletedTask;
 
@@ -117,11 +143,11 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
             }
         }
 
-        // 3) Lyrico JS 源兜底：LRCLIB 命不中时，依次尝试内嵌的网易云/QQ/酷狗/汽水/Apple 源。
-        //    这层有真实网络与加解密开销，只在前面都失败才走，并整体参与缓存。
-        if (result == null)
+        // 3) 外部 Lyrico JS 源兜底：LRCLIB 命不中时，尝试用户放入 Plugin/LyricoSources/
+        //    的源插件（网易云/QQ/酷狗/汽水/Apple 等，一次取一份 XML 元数据并择优）。
+        if (result == null && _lyrico.AvailablePlugins.Count > 0)
         {
-            result = await _lyrico.GetAsync(title, artist, album, durationSeconds);
+            result = await _lyrico.GetAsync(title, artist ?? "", album, durationSeconds).ConfigureAwait(false);
         }
 
         // 仅缓存自动匹配结果（覆盖路径已提前返回）

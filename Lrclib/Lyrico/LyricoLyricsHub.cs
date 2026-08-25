@@ -16,6 +16,7 @@ public sealed class LyricoLyricsHub : IDisposable
     private readonly Dictionary<string, LyricoScriptHost> _hosts = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _initLock = new();
     private bool _initialized;
+    private readonly string[] _order;
 
     /// <summary>各源是否已加载（调试/诊断用）。</summary>
     public IReadOnlyDictionary<string, string> SourceStatuses { get; private set; } =
@@ -24,6 +25,21 @@ public sealed class LyricoLyricsHub : IDisposable
     public LyricoLyricsHub()
     {
         _catalog = new LyricoSourceCatalog();
+        _order = ResolveOrder(_catalog);
+    }
+
+    /// <summary>解析尝试顺序：官方源在前（保持兼容），其余外部源按目录名排序追加。</summary>
+    private static string[] ResolveOrder(LyricoSourceCatalog catalog)
+    {
+        var names = catalog.PluginNames;
+        var result = new List<string>(names.Count);
+        foreach (var p in PriorityOrder)
+            if (names.Contains(p, StringComparer.OrdinalIgnoreCase) && !result.Contains(p, StringComparer.OrdinalIgnoreCase))
+                result.Add(p);
+        foreach (var p in names)
+            if (!result.Contains(p, StringComparer.OrdinalIgnoreCase))
+                result.Add(p);
+        return result.ToArray();
     }
 
     public IReadOnlyList<string> AvailablePlugins => _catalog.PluginNames;
@@ -34,7 +50,7 @@ public sealed class LyricoLyricsHub : IDisposable
         lock (_initLock)
         {
             if (_initialized) return;
-            foreach (var plugin in PriorityOrder)
+            foreach (var plugin in _order)
             {
                 if (!_catalog.PluginNames.Contains(plugin, StringComparer.OrdinalIgnoreCase)) continue;
                 var manifest = _catalog.GetManifest(plugin);

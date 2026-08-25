@@ -5,7 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 namespace CatClawMusic.Plugins.Lrclib;
 
 /// <summary>
-/// 「歌词匹配」入口页 ViewModel：搜索 LRCLIB 候选 → 选定保存为覆盖记录；
+/// 「歌词匹配」入口页 ViewModel：搜索 LRCLIB 候选 → 底部面板预览歌词 → 选定保存为覆盖记录；
 /// 覆盖记录按 歌名|艺人 持久化，之后播放该歌曲时插件优先返回，不再自动匹配。
 /// </summary>
 public partial class ManualMatchViewModel : ObservableObject
@@ -26,6 +26,18 @@ public partial class ManualMatchViewModel : ObservableObject
 
     [ObservableProperty]
     private string statusText = string.Empty;
+
+    /// <summary>当前标签：0 = 候选，1 = 已保存（切换展示列表）</summary>
+    [ObservableProperty]
+    private int activeTab;
+
+    /// <summary>底部面板当前选中的候选（预览歌词 / 保存覆盖）</summary>
+    [ObservableProperty]
+    private CandidateItem? selectedCandidate;
+
+    /// <summary>是否显示候选底部面板</summary>
+    [ObservableProperty]
+    private bool showCandidateSheet;
 
     public ObservableCollection<CandidateItem> Candidates { get; } = new();
 
@@ -58,7 +70,9 @@ public partial class ManualMatchViewModel : ObservableObject
             }
             foreach (var t in results.Take(50))
                 Candidates.Add(new CandidateItem(t));
-            StatusText = $"找到 {results.Count} 个候选（可点击下方「使用此歌词」保存）";
+            // 命中后自动切到「候选」标签
+            var title = SearchTitle.Trim();
+            StatusText = $"找到 {results.Count} 个候选 · {title.Trim()} — 点卡片预览/使用歌词";
         }
         catch
         {
@@ -70,15 +84,36 @@ public partial class ManualMatchViewModel : ObservableObject
         }
     }
 
-    /// <summary>把选中的候选保存为覆盖记录（键 = 当前搜索的歌名|艺人）</summary>
+    /// <summary>点击候选：打开底部面板预览歌词</summary>
     [RelayCommand]
-    private void SaveOverride(CandidateItem? item)
+    private void OpenCandidate(CandidateItem? item)
     {
         if (item == null) return;
+        if (!item.HasLyrics)
+        {
+            StatusText = "该候选无歌词，无法保存";
+            return;
+        }
+        SelectedCandidate = item;
+        ShowCandidateSheet = true;
+    }
 
-        _store.Set(SearchTitle, SearchArtist, item.Track);
+    /// <summary>关闭候选底部面板</summary>
+    [RelayCommand]
+    private void CloseSheet() => ShowCandidateSheet = false;
+
+    /// <summary>底部面板「使用此歌词」：把当前选中候选保存为覆盖记录（键 = 当前搜索的歌名|艺人）</summary>
+    [RelayCommand]
+    private void ApplySelected()
+    {
+        var candidate = SelectedCandidate;
+        if (candidate == null) return;
+        var trackName = candidate.Track.TrackName?.Trim();
+        _store.Set(SearchTitle, SearchArtist, candidate.Track);
+        ShowCandidateSheet = false;
+        SelectedCandidate = null;
         RefreshOverrides();
-        StatusText = $"已保存：{SearchTitle.Trim()} 将优先使用「{item.Track.TrackName} - {item.Track.ArtistName}」的歌词";
+        StatusText = $"已保存：{SearchTitle.Trim()} 将优先使用「{trackName}」的歌词";
     }
 
     /// <summary>删除覆盖记录，恢复自动匹配</summary>
@@ -132,16 +167,38 @@ public class CandidateItem
         }
     }
 
+    /// <summary>是否有歌词（同步或纯文本），决定能否保存</summary>
+    public bool HasLyrics =>
+        !string.IsNullOrWhiteSpace(Track.SyncedLyrics) || !string.IsNullOrWhiteSpace(Track.PlainLyrics);
+
     /// <summary>歌词形态徽标：同步歌词 / 纯文本 / 无歌词</summary>
     public string Badge => !string.IsNullOrWhiteSpace(Track.SyncedLyrics)
         ? "同步歌词"
         : !string.IsNullOrWhiteSpace(Track.PlainLyrics) ? "纯文本" : "无歌词";
 
-    /// <summary>无歌词的候选不可保存</summary>
-    public bool CanSave => !string.IsNullOrWhiteSpace(Track.SyncedLyrics) || !string.IsNullOrWhiteSpace(Track.PlainLyrics);
+    /// <summary>无歌词的候选不可保存（置灰）</summary>
+    public bool IsUnavailable => !HasLyrics;
 
-    /// <summary>无歌词的候选置灰</summary>
-    public bool IsUnavailable => !CanSave;
+    /// <summary>封面占位：取歌名首字符，作为方形色块的文字</summary>
+    public string CoverText
+    {
+        get
+        {
+            var t = string.IsNullOrWhiteSpace(Track.TrackName) ? "♪" : Track.TrackName.Trim();
+            return t.Length > 0 ? t[..1].ToUpperInvariant() : "♪";
+        }
+    }
+
+    /// <summary>底部面板歌词预览文本（同步优先，纯文本兜底），无则为空</summary>
+    public string PreviewLyrics
+    {
+        get
+        {
+            var synced = Track.SyncedLyrics;
+            if (!string.IsNullOrWhiteSpace(synced)) return synced;
+            return Track.PlainLyrics ?? string.Empty;
+        }
+    }
 }
 
 /// <summary>覆盖记录条目（管理列表展示用）</summary>
