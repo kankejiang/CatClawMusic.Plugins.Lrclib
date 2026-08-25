@@ -34,9 +34,9 @@ public class BatchLyricsFormatPage : ContentPage
                 new RowDefinition(GridLength.Star),
             },
         };
-        root.Add(header, 0);
-        root.Add(config, 1);
-        root.Add(results, 2);
+        root.Add(header, 0, 0);
+        root.Add(config, 0, 1);
+        root.Add(results, 0, 2);
 
         Content = root;
     }
@@ -207,9 +207,9 @@ public class BatchLyricsFormatPage : ContentPage
                 new RowDefinition(GridLength.Star),
             },
         };
-        root.Add(title, 0);
-        root.Add(list, 1);
-        root.Add(empty, 1);
+        root.Add(title, 0, 0);
+        root.Add(list, 0, 1);
+        root.Add(empty, 0, 1);
         return root;
     }
 

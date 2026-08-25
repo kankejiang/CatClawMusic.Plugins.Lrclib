@@ -34,9 +34,9 @@ public class LocalSearchPage : ContentPage
                 new RowDefinition(GridLength.Star),
             },
         };
-        root.Add(BuildSearchBar(), 0);
-        root.Add(BuildTabBar(), 1);
-        root.Add(_list, 2);
+        root.Add(BuildSearchBar(), 0, 0);
+        root.Add(BuildTabBar(), 0, 1);
+        root.Add(_list, 0, 2);
 
         Content = root;
 

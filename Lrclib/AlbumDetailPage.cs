@@ -29,8 +29,8 @@ public class AlbumDetailPage : ContentPage
                 new RowDefinition(GridLength.Star),
             },
         };
-        root.Add(BuildHeader(), 0);
-        root.Add(_list, 1);
+        root.Add(BuildHeader(), 0, 0);
+        root.Add(_list, 0, 1);
         Content = root;
     }
 

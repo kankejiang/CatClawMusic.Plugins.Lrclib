@@ -41,10 +41,10 @@ public class ManualMatchPage : ContentPage
                 new RowDefinition(GridLength.Star),
             },
         };
-        content.Add(searchPanel, 0);
-        content.Add(tabRow, 1);
-        content.Add(candidatesList, 2, 0);
-        content.Add(overridesList, 2);
+        content.Add(searchPanel, 0, 0);
+        content.Add(tabRow, 0, 1);
+        content.Add(candidatesList, 0, 2);
+        content.Add(overridesList, 0, 2);
 
         // 底部歌词预览面板（覆盖全页）
         var sheet = BuildCandidateSheet();
@@ -399,8 +399,8 @@ public class ManualMatchPage : ContentPage
                 new RowDefinition(GridLength.Auto),
             },
         };
-        sheet.Add(scrim, 0);
-        sheet.Add(panel, 1);
+        sheet.Add(scrim, 0, 0);
+        sheet.Add(panel, 0, 1);
         sheet.SetBinding(Grid.IsVisibleProperty, nameof(ManualMatchViewModel.ShowCandidateSheet));
 
         return sheet;

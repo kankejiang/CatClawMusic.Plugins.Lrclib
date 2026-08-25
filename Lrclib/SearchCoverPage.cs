@@ -31,8 +31,8 @@ public class SearchCoverPage : ContentPage
                 new RowDefinition(GridLength.Star),
             },
         };
-        content.Add(searchPanel, 0);
-        content.Add(list, 1, 0);
+        content.Add(searchPanel, 0, 0);
+        content.Add(list, 0, 1);
 
         // 底部封面预览面板（覆盖全页）
         content.Add(BuildCandidateSheet());
@@ -273,8 +273,8 @@ public class SearchCoverPage : ContentPage
                 new RowDefinition(GridLength.Auto),
             },
         };
-        sheet.Add(scrim, 0);
-        sheet.Add(panel, 1);
+        sheet.Add(scrim, 0, 0);
+        sheet.Add(panel, 0, 1);
         sheet.SetBinding(Grid.IsVisibleProperty, nameof(SearchCoverViewModel.ShowPreview));
 
         return sheet;

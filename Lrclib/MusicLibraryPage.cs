@@ -25,6 +25,13 @@ public class MusicLibraryPage : ContentPage
     private readonly Label _selectionCountLabel;
     private readonly Border _batchBar;
     private bool _selectionMode;
+    // ── 响应式布局状态 ──
+    private readonly Grid _topBar;              // 宽屏时容纳搜索栏 + Tab 栏（同一行）
+    private readonly View _tabBar;              // Tab 栏：窄屏在底部，宽屏移到顶部右侧
+    private readonly ContentView _bottomTabHost = new();  // 窄屏时的 Tab 宿主
+    private readonly Grid _contentArea;
+    private bool? _isWideLayout;
+    private double _appliedWidth;
 
     public MusicLibraryPage(MusicLibraryViewModel vm)
     {
@@ -51,6 +58,7 @@ public class MusicLibraryPage : ContentPage
                 new ColumnDefinition(GridLength.Auto),
             },
         };
+        _contentArea = contentArea;
         _loadingIndicator.IsRunning = true;
         _loadingIndicator.VerticalOptions = LayoutOptions.Center;
         _loadingIndicator.HorizontalOptions = LayoutOptions.Center;
@@ -69,7 +77,10 @@ public class MusicLibraryPage : ContentPage
         _selectionCountLabel.SetDynamicResource(Label.TextColorProperty, "TextSecondaryColor");
 
         _batchBar = BuildBatchBar();
+        _tabBar = BuildTabBar();
 
+        // 底部区：批量栏（第 0 行）+ Tab 宿主（第 1 行）。
+        // 注意 Grid.Add(view, column, row) 第二参是列、第三参才是行，必须显式写全。
         var bottomArea = new Grid
         {
             RowDefinitions =
@@ -78,9 +89,20 @@ public class MusicLibraryPage : ContentPage
                 new RowDefinition(GridLength.Auto),
             },
         };
-        bottomArea.Add(_batchBar, 0);
-        bottomArea.Add(BuildTabBar(), 1);
+        bottomArea.Add(_batchBar, 0, 0);
+        bottomArea.Add(_bottomTabHost, 0, 1);
         _batchBar.IsVisible = false;
+
+        // 顶部区：窄屏只放搜索栏；宽屏时把 Tab 栏挪到搜索栏右侧（第 1 列）。
+        _topBar = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+            },
+        };
+        _topBar.Add(searchBar, 0, 0);
 
         var root = new Grid
         {
@@ -91,14 +113,79 @@ public class MusicLibraryPage : ContentPage
                 new RowDefinition(GridLength.Auto),
             },
         };
-        root.Add(searchBar, 0);
-        root.Add(contentArea, 1);
-        root.Add(bottomArea, 2);
+        root.Add(_topBar, 0, 0);
+        root.Add(contentArea, 0, 1);
+        root.Add(bottomArea, 0, 2);
 
         Content = root;
 
         _vm.PropertyChanged += OnVmPropertyChanged;
         SetActiveTab(_vm.ActiveTab);
+        ApplyResponsiveLayout(Width);
+    }
+
+    // ── 响应式：窗口尺寸变化时切换窄屏 / 宽屏布局 ──
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        ApplyResponsiveLayout(width);
+    }
+
+    private void ApplyResponsiveLayout(double width)
+    {
+        if (width <= 0) width = ThemeHelper.WideBreakpoint - 1;   // 首次布局前按窄屏兜底
+        if (_isWideLayout != null && Math.Abs(width - _appliedWidth) < 1) return;
+        var wide = ThemeHelper.IsWide(width);
+
+        // 宽屏：Tab 移到顶部搜索栏右侧；窄屏：Tab 回到底部
+        if (_isWideLayout != wide)
+        {
+            _isWideLayout = wide;
+            if (wide)
+            {
+                _bottomTabHost.Content = null;
+                if (_topBar.Children.Contains(_tabBar) == false)
+                    _topBar.Add(_tabBar, 1, 0);
+                _tabBar.IsVisible = true;
+            }
+            else
+            {
+                if (_topBar.Children.Contains(_tabBar))
+                    _topBar.Children.Remove(_tabBar);
+                _bottomTabHost.Content = _tabBar;
+            }
+            ApplyTabBarMetrics(wide);
+        }
+
+        // 超宽屏：内容区限宽居中，避免列表行被拉成一条长线
+        _contentArea.MaximumWidthRequest = width >= ThemeHelper.UltraWideBreakpoint
+            ? ThemeHelper.MaxContentWidth
+            : double.PositiveInfinity;
+        _contentArea.HorizontalOptions = width >= ThemeHelper.UltraWideBreakpoint
+            ? LayoutOptions.Center
+            : LayoutOptions.Fill;
+
+        // 专辑网格列数随可用宽度自适应
+        if (_albumsView?.ItemsLayout is GridItemsLayout gil)
+        {
+            var span = ThemeHelper.GridSpan(width);
+            if (gil.Span != span) gil.Span = span;
+        }
+
+        _appliedWidth = width;
+    }
+
+    /// <summary>Tab 栏在宽屏时不再等分铺满，改为按内容宽度靠右排列</summary>
+    private void ApplyTabBarMetrics(bool wide)
+    {
+        if (_tabBar is not Grid bar) return;
+        foreach (var col in bar.ColumnDefinitions)
+            col.Width = wide ? GridLength.Auto : GridLength.Star;
+        bar.HorizontalOptions = wide ? LayoutOptions.End : LayoutOptions.Fill;
+        bar.Padding = wide ? new Thickness(4, 8, 12, 4) : new Thickness(12, 6, 12, 8);
+
+        foreach (var tab in new[] { _tabSongs, _tabAlbums, _tabArtists })
+            tab.Padding = wide ? new Thickness(18, 2) : new Thickness(6, 2);
     }
 
     // ── 批量操作栏 ──
@@ -358,7 +445,8 @@ public class MusicLibraryPage : ContentPage
             Margin = new Thickness(12, 4, 12, 0),
         };
         albums.SetBinding(ItemsView.ItemsSourceProperty, nameof(MusicLibraryViewModel.Albums));
-        albums.ItemsLayout = new GridItemsLayout(2, ItemsLayoutOrientation.Vertical)
+        // 列数随窗口宽度自适应（窄屏 2 列，PC / 横屏可达 8 列）
+        albums.ItemsLayout = new GridItemsLayout(ThemeHelper.GridSpan(Width), ItemsLayoutOrientation.Vertical)
         {
             HorizontalItemSpacing = 10,
             VerticalItemSpacing = 12,

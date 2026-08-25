@@ -114,8 +114,9 @@ public class EditMetadataPage : ContentPage
                 new ColumnDefinition(GridLength.Star),
             },
         };
-        buttons.Add(pick.Column(0), 0);
-        buttons.Add(clear.Column(1), 0);
+        // Grid.Add(view, column, row)：显式写全，避免与 .Column() 互相覆盖
+        buttons.Add(pick, 0, 0);
+        buttons.Add(clear, 1, 0);
 
         var card = new VerticalStackLayout { Spacing = 10 };
         card.Add(coverBox);
@@ -170,8 +171,8 @@ public class EditMetadataPage : ContentPage
                     new ColumnDefinition(GridLength.Star),
                 },
             };
-            row.Add(label.Column(0), 0);
-            row.Add(entry.Column(1), 0);
+            row.Add(label, 0, 0);
+            row.Add(entry, 1, 0);
             grid.Add(row, 0, i);
         }
 
@@ -214,8 +215,8 @@ public class EditMetadataPage : ContentPage
                     new ColumnDefinition(GridLength.Star),
                 },
             };
-            row.Add(keyLabel.Column(0), 0);
-            row.Add(entry.Column(1), 0);
+            row.Add(keyLabel, 0, 0);
+            row.Add(entry, 1, 0);
             inner.Add(row);
         }
 

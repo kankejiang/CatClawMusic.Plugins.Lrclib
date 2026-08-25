@@ -12,6 +12,27 @@ namespace CatClawMusic.Plugins.Lrclib;
 /// </summary>
 internal static class ThemeHelper
 {
+    // ── 响应式断点（PC / 平板横屏 / 手机横屏 适配用）──
+    /// <summary>宽屏断点：达到该宽度视为 PC / 横屏宽布局</summary>
+    public const double WideBreakpoint = 720;
+
+    /// <summary>超宽断点：内容需要限宽居中，避免行被拉得过长</summary>
+    public const double UltraWideBreakpoint = 1280;
+
+    /// <summary>内容区最大宽度（超宽屏居中显示）</summary>
+    public const double MaxContentWidth = 1200;
+
+    /// <summary>是否为宽屏布局（PC 窗口 / 横屏）</summary>
+    public static bool IsWide(double width) => width >= WideBreakpoint;
+
+    /// <summary>按可用宽度计算网格列数（专辑/封面网格用）</summary>
+    public static int GridSpan(double width, double itemWidth = 190, int min = 2, int max = 8)
+    {
+        if (width <= 0) return min;
+        var span = (int)Math.Floor(width / itemWidth);
+        return Math.Clamp(span, min, max);
+    }
+
     /// <summary>读取宿主主题颜色，缺失时回退默认色</summary>
     public static MColor Color(string key, string fallback)
     {
