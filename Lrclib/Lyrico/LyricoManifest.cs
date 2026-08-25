@@ -107,6 +107,8 @@ public sealed class LyricoSourceCatalog
         {
             var plugin = Path.GetFileName(pluginDir);
             if (string.IsNullOrEmpty(plugin)) continue;
+            // 跳过内部/临时目录（.import-* 导入残留、.config 配置等），避免被当作源插件
+            if (plugin.StartsWith('.', StringComparison.Ordinal)) continue;
 
             var files = new Dictionary<string, string>(StringComparer.Ordinal);
             if (!TryLoadScriptsRecursive(pluginDir, files))

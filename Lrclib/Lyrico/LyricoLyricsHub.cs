@@ -220,7 +220,8 @@ public sealed class LyricoLyricsHub : IDisposable
         return result;
     }
 
-    /// <summary>删除指定源插件目录（卸载）。失败返回 null，成功返回被删目录名。</summary>
+    /// <summary>删除指定源插件目录（卸载）。失败返回 null，成功返回被删目录名。
+    /// 失败原因通过 <see cref="LyricoLog.Warn"/> 记录（宿主导出可查）。</summary>
     public string? DeleteSource(string dir)
     {
         if (string.IsNullOrWhiteSpace(dir)) return null;
@@ -228,13 +229,17 @@ public sealed class LyricoLyricsHub : IDisposable
         {
             var root = LyricoSourceCatalog.SourcesRoot;
             var path = Path.Combine(root, dir);
-            if (!Directory.Exists(path)) return null;
+            if (!Directory.Exists(path)) return dir;  // 目录已不存在视为卸载成功
             // 先在内存里卸载该源
             if (_hosts.TryGetValue(dir, out var host)) { host.Unload(); _hosts.Remove(dir); }
             Directory.Delete(path, recursive: true);
             return dir;
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            LyricoLog.Warn("Lyrico", $"卸载源失败 {dir}: {ex.Message}");
+            return null;
+        }
     }
 
     // ── 配置访问（供配置 UI 用，不依赖 JS 引擎加载）──
