@@ -21,6 +21,8 @@ public class MusicLibraryPage : ContentPage
     private readonly Button _tabSongs;
     private readonly Button _tabAlbums;
     private readonly Button _tabArtists;
+    private readonly Button _tabFolders;
+    private CollectionView? _foldersView;
     private readonly VerticalStackLayout _letterRail;
     private readonly Label _selectionCountLabel;
     private readonly Border _batchBar;
@@ -42,7 +44,7 @@ public class MusicLibraryPage : ContentPage
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
 
         var searchBar = BuildSearchBar();
-        (_tabSongs, _tabAlbums, _tabArtists) = BuildBottomTabs();
+        (_tabSongs, _tabAlbums, _tabArtists, _tabFolders) = BuildBottomTabs();
         _letterRail = new VerticalStackLayout
         {
             Spacing = 2,
@@ -184,7 +186,7 @@ public class MusicLibraryPage : ContentPage
         bar.HorizontalOptions = wide ? LayoutOptions.End : LayoutOptions.Fill;
         bar.Padding = wide ? new Thickness(4, 8, 12, 4) : new Thickness(12, 6, 12, 8);
 
-        foreach (var tab in new[] { _tabSongs, _tabAlbums, _tabArtists })
+        foreach (var tab in new[] { _tabSongs, _tabAlbums, _tabArtists, _tabFolders })
             tab.Padding = wide ? new Thickness(18, 2) : new Thickness(6, 2);
     }
 
@@ -249,6 +251,13 @@ public class MusicLibraryPage : ContentPage
             if (songs.Count == 0) return;
             await PluginNav.PushAsync(new BatchReplayGainPage(songs));
         });
+        var batchExport = MakeBatchButton("批量导出", async () =>
+        {
+            var songs = GetSelectedSongs();
+            if (songs.Count == 0) return;
+            await PluginNav.PushAsync(new BatchExportPage(songs));
+        });
+        var batchHistory = MakeBatchButton("任务历史", () => PluginNav.PushAsync(new BatchTaskListPage()));
 
         var btnRow = new FlexLayout
         {
@@ -263,6 +272,8 @@ public class MusicLibraryPage : ContentPage
         btnRow.Children.Add(batchFormat);
         btnRow.Children.Add(batchTag);
         btnRow.Children.Add(batchLoudness);
+        btnRow.Children.Add(batchExport);
+        btnRow.Children.Add(batchHistory);
         bar.Add(btnRow, 0, 1);
 
         return new Border
@@ -393,7 +404,31 @@ public class MusicLibraryPage : ContentPage
             VerticalOptions = LayoutOptions.Center,
             Margin = new Thickness(6, 0, 0, 0),
         };
-        settingsButton.Clicked += async (_, _) => await PluginNav.PushAsync(new EditorSettingsPage());
+        settingsButton.Clicked += async (_, _) => await PluginNav.PushAsync(new SettingsCenterPage());
+
+        var lyricsButton = new Button
+        {
+            Text = "歌词",
+            FontSize = 13,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = ThemeHelper.Color("PrimaryColor", "#8C7BFF"),
+            BackgroundColor = Colors.Transparent,
+            CornerRadius = 16,
+            Padding = new Thickness(14, 2),
+            HeightRequest = 34,
+            VerticalOptions = LayoutOptions.Center,
+            Margin = new Thickness(6, 0, 0, 0),
+        };
+        lyricsButton.Clicked += async (_, _) =>
+        {
+            // 歌词匹配页：LRCLIB 候选搜索/覆盖管理 + Lyrico 源导入。
+            // 依赖 PluginHost 注入的插件单例（CreateEntryPage 时设置）。
+            if (PluginHost.LrclibClient is { } c && PluginHost.OverrideStore is { } os
+                && PluginHost.LyricoHub is { } hub && PluginHost.Services is { } svcs)
+            {
+                await PluginNav.PushAsync(new ManualMatchPage(new ManualMatchViewModel(c, os, hub, svcs)));
+            }
+        };
 
         var bar = new Grid
         {
@@ -403,12 +438,14 @@ public class MusicLibraryPage : ContentPage
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
             },
         };
         bar.Add(entry, 0);
         bar.Add(searchPageButton, 1);
         bar.Add(selectButton, 2);
         bar.Add(settingsButton, 3);
+        bar.Add(lyricsButton, 4);
 
         return new Border
         {
@@ -469,6 +506,21 @@ public class MusicLibraryPage : ContentPage
         artists.ItemTemplate = new DataTemplate(BuildArtistRow);
         artists.SelectionChanged += OnArtistSelected;
         return artists;
+    }
+
+    private CollectionView BuildFoldersView()
+    {
+        var folders = new CollectionView
+        {
+            IsGrouped = true,
+            SelectionMode = SelectionMode.Single,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+        folders.SetBinding(ItemsView.ItemsSourceProperty, nameof(MusicLibraryViewModel.FolderGroups));
+        folders.GroupHeaderTemplate = new DataTemplate(BuildFolderHeader);
+        folders.ItemTemplate = new DataTemplate(BuildFolderRow);
+        folders.SelectionChanged += OnFolderSelected;
+        return folders;
     }
 
     // ── 歌曲分组头：字母 + 数量 ──
@@ -604,6 +656,60 @@ public class MusicLibraryPage : ContentPage
         return grid;
     }
 
+    // ── 文件夹分组头 ──
+    private static object BuildFolderHeader()
+    {
+        var grid = new Grid
+        {
+            Padding = new Thickness(16, 10, 16, 6),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
+            },
+        };
+        var key = ThemeHelper.Label(14, FontAttributes.Bold, "PrimaryColor", "#8C7BFF", true);
+        key.SetBinding(Label.TextProperty, nameof(FolderGroup.Key));
+        var count = ThemeHelper.Label(12, FontAttributes.None, "TextSecondaryColor", "#C2C6E4", true);
+        count.SetBinding(Label.TextProperty, nameof(FolderGroup.CountText));
+        grid.Add(key, 0);
+        grid.Add(count, 1);
+        return grid;
+    }
+
+    // ── 文件夹行 ──
+    private static object BuildFolderRow()
+    {
+        var name = ThemeHelper.Label(15, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", true);
+        name.SetBinding(Label.TextProperty, nameof(FolderItem.Name));
+        var subtitle = ThemeHelper.Label(12, FontAttributes.None, "TextSecondaryColor", "#C2C6E4", true);
+        subtitle.SetBinding(Label.TextProperty, nameof(FolderItem.Subtitle));
+
+        var stack = new VerticalStackLayout
+        {
+            VerticalOptions = LayoutOptions.Center,
+            Spacing = 2,
+            Children = { name, subtitle },
+        };
+
+        var arrow = ThemeHelper.Label(16, FontAttributes.Bold, "TextSecondaryColor", "#C2C6E4", false);
+        arrow.Text = "›";
+        arrow.VerticalOptions = LayoutOptions.Center;
+
+        var grid = new Grid
+        {
+            Padding = new Thickness(12, 6),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+            },
+        };
+        grid.Add(stack, 0);
+        grid.Add(arrow, 1);
+        return grid;
+    }
+
     // ── 封面（有图显示图，无图显示首字占位） ──
     private static View BuildCover(string? coverPathBinding, string coverTextBinding, double size, double corner = 10)
     {
@@ -657,8 +763,8 @@ public class MusicLibraryPage : ContentPage
     }
 
     // ── 底部 Tab ──
-    private (Button songs, Button albums, Button artists) BuildBottomTabs()
-        => (MakeTab("歌曲"), MakeTab("专辑"), MakeTab("艺人"));
+    private (Button songs, Button albums, Button artists, Button folders) BuildBottomTabs()
+        => (MakeTab("歌曲"), MakeTab("专辑"), MakeTab("艺人"), MakeTab("文件夹"));
 
     private static Button MakeTab(string text) => new()
     {
@@ -675,6 +781,7 @@ public class MusicLibraryPage : ContentPage
         _tabSongs.Clicked += (_, _) => SetActiveTab(0);
         _tabAlbums.Clicked += (_, _) => SetActiveTab(1);
         _tabArtists.Clicked += (_, _) => SetActiveTab(2);
+        _tabFolders.Clicked += (_, _) => SetActiveTab(3);
 
         var bar = new Grid
         {
@@ -685,11 +792,13 @@ public class MusicLibraryPage : ContentPage
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
             },
         };
         bar.Add(_tabSongs, 0);
         bar.Add(_tabAlbums, 1);
         bar.Add(_tabArtists, 2);
+        bar.Add(_tabFolders, 3);
         return bar;
     }
 
@@ -701,6 +810,7 @@ public class MusicLibraryPage : ContentPage
         {
             0 => _vm.SongLetters,
             2 => _vm.ArtistLetters,
+            3 => _vm.FolderLetters,
             _ => null,
         };
         if (letters == null || letters.Count == 0)
@@ -734,6 +844,11 @@ public class MusicLibraryPage : ContentPage
             var gi = IndexOf(_vm.ArtistGroups, letter, g => g.Key);
             if (gi >= 0) _artistsView.ScrollTo(0, gi, ScrollToPosition.Start, false);
         }
+        else if (_vm.ActiveTab == 3 && _foldersView != null)
+        {
+            var gi = IndexOf(_vm.FolderGroups, letter, g => g.Key);
+            if (gi >= 0) _foldersView.ScrollTo(0, gi, ScrollToPosition.Start, false);
+        }
     }
 
     private static int IndexOf<T>(IReadOnlyList<T> groups, string key, Func<T, string> keySelector)
@@ -755,6 +870,7 @@ public class MusicLibraryPage : ContentPage
             0 => _songsView ??= BuildSongsView(),
             1 => _albumsView ??= BuildAlbumsView(),
             2 => _artistsView ??= BuildArtistsView(),
+            3 => _foldersView ??= BuildFoldersView(),
             _ => _contentHost.Content,
         };
 
@@ -767,6 +883,8 @@ public class MusicLibraryPage : ContentPage
         _tabAlbums.BackgroundColor = tab == 1 ? primary : Colors.Transparent;
         _tabArtists.TextColor = tab == 2 ? Colors.White : secondary;
         _tabArtists.BackgroundColor = tab == 2 ? primary : Colors.Transparent;
+        _tabFolders.TextColor = tab == 3 ? Colors.White : secondary;
+        _tabFolders.BackgroundColor = tab == 3 ? primary : Colors.Transparent;
 
         RebuildLetterRail();
     }
@@ -776,7 +894,8 @@ public class MusicLibraryPage : ContentPage
         if (e.PropertyName == nameof(MusicLibraryViewModel.ActiveTab))
             SetActiveTab(_vm.ActiveTab);
         else if (e.PropertyName == nameof(MusicLibraryViewModel.SongLetters)
-              || e.PropertyName == nameof(MusicLibraryViewModel.ArtistLetters))
+              || e.PropertyName == nameof(MusicLibraryViewModel.ArtistLetters)
+              || e.PropertyName == nameof(MusicLibraryViewModel.FolderLetters))
             RebuildLetterRail();
         else if (e.PropertyName == nameof(MusicLibraryViewModel.IsLoading))
             _loadingIndicator.IsVisible = _vm.IsLoading;
@@ -807,6 +926,13 @@ public class MusicLibraryPage : ContentPage
         if (e.CurrentSelection.FirstOrDefault() is not ArtistItem artist) return;
         if (_artistsView != null) _artistsView.SelectedItem = null;
         await PluginNav.PushAsync(new ArtistDetailPage(artist));
+    }
+
+    private async void OnFolderSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        if (e.CurrentSelection.FirstOrDefault() is not FolderItem folder) return;
+        if (_foldersView != null) _foldersView.SelectedItem = null;
+        await PluginNav.PushAsync(new FolderDetailPage(folder));
     }
 }
 

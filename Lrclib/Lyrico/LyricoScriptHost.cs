@@ -15,6 +15,7 @@ public sealed class LyricoScriptHost
     private readonly LyricoSourceCatalog _catalog;
     private readonly string _plugin;
     private readonly LyricoManifest _manifest;
+    private readonly LyricoSourceConfigStore _config;
 
     private Engine? _engine;
     private bool _loaded;
@@ -25,6 +26,8 @@ public sealed class LyricoScriptHost
         _catalog = catalog;
         _plugin = plugin;
         _manifest = manifest;
+        _config = new LyricoSourceConfigStore(plugin);
+        _config.ApplyDefaults(manifest.ConfigFields);
     }
 
     public string PluginName => _plugin;
@@ -119,13 +122,17 @@ public sealed class LyricoScriptHost
             ["album"] = album ?? "",
             ["duration"] = durationMs,
         };
+        // 配置：每次请求重新从磁盘加载（用户可能在配置页改了值）。
+        _config.Load();
+        _config.ApplyDefaults(_manifest.ConfigFields);
+        var config = _config.Values.ToDictionary(kv => kv.Key, kv => (object?)kv.Value);
         var request = new Dictionary<string, object?>
         {
             ["song"] = song,
             ["page"] = 1,
             ["pageSize"] = 5,
             ["separator"] = "/",
-            ["config"] = new Dictionary<string, object?>(),
+            ["config"] = config,
         };
 
         await _execLock.WaitAsync(ct).ConfigureAwait(false);

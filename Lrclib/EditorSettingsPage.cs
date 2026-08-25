@@ -21,6 +21,8 @@ public class EditorSettingsPage : ContentPage
         stack.Add(MakeEntry("编辑字段可见性", "控制编辑标签页显示哪些字段", () => PluginNav.PushAsync(new EditFieldVisibilityPage())));
         stack.Add(MakeEntry("自定义标签", "管理要在编辑页显示的自定义标签键", () => PluginNav.PushAsync(new CustomTagManagementPage())));
         stack.Add(MakeEntry("艺术家拆分设置", "配置艺人库如何拆分多艺人", () => PluginNav.PushAsync(new ArtistSplitSettingsPage())));
+        stack.Add(MakeEntry("歌词清理规则", "配置标签行过滤关键词与去空行默认", () => PluginNav.PushAsync(new LyricCleanupRulesPage())));
+        stack.Add(MakeEntry("备份与恢复", "导出/导入插件全部用户配置", () => PluginNav.PushAsync(new SettingsBackupPage())));
         return stack;
     }
 

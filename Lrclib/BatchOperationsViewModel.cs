@@ -122,7 +122,33 @@ public partial class BatchOperationsViewModel : ObservableObject
 
         HasResults = true;
         ProgressText = $"完成 {DoneCount}/{Songs.Count}";
+
+        // 把本次批量操作记录为一条持久化历史任务（任务中心可查看明细）。
+        if (Mode != BatchOperationMode.DeleteFiles)
+        {
+            BatchTaskStore.Add(new BatchTaskRecord
+            {
+                Mode = ModeDisplayName(),
+                Total = Songs.Count,
+                SuccessCount = Results.Count(r => r.Success),
+                Items = Results.Select(r => new BatchTaskItemRecord
+                {
+                    Title = r.Title,
+                    Status = r.Status,
+                    Success = r.Success,
+                }).ToList(),
+            });
+        }
     }
+
+    private string ModeDisplayName() => Mode switch
+    {
+        BatchOperationMode.MatchLyrics => "批量匹配歌词",
+        BatchOperationMode.EditTags => "批量编辑标签",
+        BatchOperationMode.RenameFiles => "批量重命名文件",
+        BatchOperationMode.DeleteFiles => "批量删除文件",
+        _ => "批量操作",
+    };
 
     // ───────────────── 批量重命名 ─────────────────
 
@@ -229,28 +255,13 @@ public partial class BatchOperationsViewModel : ObservableObject
         return string.IsNullOrEmpty(ext) ? "" : ext;
     }
 
-    /// <summary>去除 Windows/Linux 非法文件名字符（映射为全角等价符，同 Lyrico 默认字符映射）+ 清理首尾空白</summary>
+    /// <summary>按字符映射规则替换文件名非法字符（默认全角等价符，可在字符映射页自定义）+ 清理首尾空白</summary>
     internal static string SanitizeFileName(string name)
     {
-        // 对应 Lyrico CharacterMappingDefaults.DEFAULT_INVALID_CHARS：
-        // \ / : * ? " < > |  → 全角等价符，避免重命名丢失分隔字符
+        var map = new CharacterMappingStore().GetMapping();
         var sb = new System.Text.StringBuilder(name.Length);
         foreach (var ch in name)
-        {
-            sb.Append(ch switch
-            {
-                '\\' => '＼',
-                '/' => '／',
-                ':' => '：',
-                '*' => '＊',
-                '?' => '？',
-                '"' => '＂',
-                '<' => '＜',
-                '>' => '＞',
-                '|' => '｜',
-                _ => ch,
-            });
-        }
+            sb.Append(map.TryGetValue(ch, out var to) ? to : ch);
         return sb.ToString().Trim();
     }
 

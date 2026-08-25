@@ -3,18 +3,23 @@ using System.Text.Json;
 
 namespace CatClawMusic.Plugins.Lrclib.Lyrico;
 
-/// <summary>Lyrico 歌词源插件的 manifest.json（仅保留桥接所需字段）。</summary>
+/// <summary>Lyrico 歌词源插件的 manifest.json（仅保留桥接所需字段，忽略未知键）。</summary>
 public sealed class LyricoManifest
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Author { get; set; } = "";
     public string Description { get; set; } = "";
+    public int VersionCode { get; set; }
+    public string VersionName { get; set; } = "";
     public int ApiVersion { get; set; } = 4;
     public int MinHostApiVersion { get; set; } = 1;
     public string Entry { get; set; } = "source.js";
     public List<string> IncludeDirs { get; set; } = new();
     public List<string> Capabilities { get; set; } = new();
+    /// <summary>插件声明的配置项（manifest.json 的 configFields）。
+    /// 用户在配置页填写，脚本经 request.config 读取。</summary>
+    public List<LyricoConfigField> ConfigFields { get; set; } = new();
 }
 
 /// <summary>

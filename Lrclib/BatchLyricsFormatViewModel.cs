@@ -33,13 +33,15 @@ public partial class BatchLyricsFormatViewModel : ObservableObject
 
     public ObservableCollection<BatchResultItem> Results { get; } = new();
 
-    /// <summary>标签行关键词，可按逗号/顿号分隔</summary>
-    [ObservableProperty] private string tagKeywords = "[ar: [al: [offset: [by: [re: [ve:";
+    /// <summary>标签行关键词，可按逗号/顿号分隔（默认从清理规则 store 读取）</summary>
+    [ObservableProperty] private string tagKeywords = "";
 
     public BatchLyricsFormatViewModel(IReadOnlyList<SongItem> songs, IAudioFileService? audio)
     {
         Songs = songs;
         _audio = audio;
+        // 默认关键词从清理规则 store 读取（用户可在歌词清理规则页自定义）
+        TagKeywords = string.Join(" ", new LyricCleanupRulesStore().GetTagKeywords());
         StatusText = $"共 {songs.Count} 首待处理，选择目标格式后点「开始转换」";
     }
 

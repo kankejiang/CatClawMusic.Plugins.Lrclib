@@ -35,11 +35,17 @@ public partial class MusicLibraryViewModel : ObservableObject
     /// <summary>艺人分组（按索引字母）</summary>
     [ObservableProperty] private ObservableCollection<ArtistGroup> artistGroups = new();
 
+    /// <summary>文件夹分组（按歌曲所在目录，再按目录名首字母分组）</summary>
+    [ObservableProperty] private ObservableCollection<FolderGroup> folderGroups = new();
+
     /// <summary>歌曲 Tab 字母索引侧栏项</summary>
     [ObservableProperty] private ObservableCollection<LetterItem> songLetters = new();
 
     /// <summary>艺人 Tab 字母索引侧栏项</summary>
     [ObservableProperty] private ObservableCollection<LetterItem> artistLetters = new();
+
+    /// <summary>文件夹 Tab 字母索引侧栏项</summary>
+    [ObservableProperty] private ObservableCollection<LetterItem> folderLetters = new();
 
     /// <summary>当前点击的歌曲（页面据此跳转详情）</summary>
     [ObservableProperty] private SongItem? selectedSong;
@@ -103,19 +109,23 @@ public partial class MusicLibraryViewModel : ObservableObject
         // 纯对象构建（SongItem/SongGroup/AlbumItem 不依赖 UI），可安全在后台线程执行
         var songGroups = BuildSongGroups(_allSongs);
         var artistGroups = BuildArtistGroups(artists);
+        var folderGroups = BuildFolderGroups(_allSongs);
         var albumItems = new ObservableCollection<AlbumItem>(_allAlbums.Select(a => new AlbumItem(a)));
         var songLetters = new ObservableCollection<LetterItem>(songGroups.Select(g => new LetterItem(g.Key)));
         var artistLetters = new ObservableCollection<LetterItem>(artistGroups.Select(g => new LetterItem(g.Key)));
+        var folderLetters = new ObservableCollection<LetterItem>(folderGroups.Select(g => new LetterItem(g.Key)));
 
         // 只把集合引用切回 UI 线程赋值（触发绑定通知），避免主线程做大工作
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
             SongGroups = songGroups;
             ArtistGroups = artistGroups;
+            FolderGroups = folderGroups;
             Albums = albumItems;
             SongLetters = songLetters;
             ArtistLetters = artistLetters;
-            StatusText = $"共 {_allSongs.Count} 首歌曲 · {_allAlbums.Count} 张专辑 · {artists.Count} 位艺人";
+            FolderLetters = folderLetters;
+            StatusText = $"共 {_allSongs.Count} 首歌曲 · {_allAlbums.Count} 张专辑 · {artists.Count} 位艺人 · {folderGroups.Sum(g => g.Count)} 个文件夹";
         });
     }
 
@@ -167,6 +177,24 @@ public partial class MusicLibraryViewModel : ObservableObject
             .GroupBy(a => GetIndexLetter(a.Name))
             .OrderBy(g => g.Key, new LetterComparer())
             .Select(g => new ArtistGroup(g.Key, g.ToList())));
+
+    /// <summary>按歌曲所在目录聚合文件夹，再按目录名首字母分组。</summary>
+    internal static ObservableCollection<FolderGroup> BuildFolderGroups(List<Song> songs)
+        => new(songs
+            .Select(s => DirectoryNameOf(s.FilePath))
+            .Where(d => !string.IsNullOrEmpty(d))
+            .GroupBy(d => d!)
+            .Select(g => new FolderItem(Path.GetFileName(g.Key) ?? g.Key, g.Key, g.Count()))
+            .GroupBy(f => GetIndexLetter(f.Name))
+            .OrderBy(g => g.Key, new LetterComparer())
+            .Select(g => new FolderGroup(g.Key, g.ToList())));
+
+    /// <summary>取文件所在目录（无路径/非法返回 null）。</summary>
+    internal static string? DirectoryNameOf(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return null;
+        try { return Path.GetDirectoryName(filePath); } catch { return null; }
+    }
 
     /// <summary>从歌曲聚合艺人（可配置多艺人拆分：分隔符/不拆分艺人；默认 / ; , 等拆分）</summary>
     private List<ArtistItem> AggregateArtists(List<Song> songs)
@@ -266,6 +294,26 @@ public class ArtistGroup : List<ArtistItem>
     public string Key { get; }
     public string CountText => $"共 {Count} 位";
     public ArtistGroup(string key, IEnumerable<ArtistItem> items) : base(items) => Key = key;
+}
+
+/// <summary>文件夹列表项</summary>
+public class FolderItem
+{
+    public string Name { get; }
+    public string Path { get; }
+    public int SongCount { get; }
+    public FolderItem(string name, string path, int songCount) { Name = name; Path = path; SongCount = songCount; }
+
+    public string Subtitle => $"{SongCount} 首 · {Path}";
+    public string CoverText => Name;
+}
+
+/// <summary>文件夹分组（字母索引组头）</summary>
+public class FolderGroup : List<FolderItem>
+{
+    public string Key { get; }
+    public string CountText => $"共 {Count} 个";
+    public FolderGroup(string key, IEnumerable<FolderItem> items) : base(items) => Key = key;
 }
 
 /// <summary>字母索引侧栏项</summary>

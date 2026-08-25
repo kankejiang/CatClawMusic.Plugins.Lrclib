@@ -122,7 +122,7 @@ public partial class SearchLyricsViewModel : ObservableObject
     /// </summary>
     private string ProcessLyrics(string raw)
     {
-        var tagKeywords = new[] { "[ti:", "[ar:", "[al:", "[by:", "[re:", "[ve:", "[offset:" };
+        var tagKeywords = new LyricCleanupRulesStore().GetTagKeywords();
         var cleaned = LyricProcessor.Cleanup(raw, RemoveEmptyLines, tagKeywords);
         if (string.IsNullOrWhiteSpace(cleaned)) cleaned = raw;
         var converted = LyricProcessor.ConvertLyrics(cleaned, ConversionMode);
