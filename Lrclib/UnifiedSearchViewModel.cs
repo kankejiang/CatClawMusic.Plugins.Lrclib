@@ -21,6 +21,9 @@ public partial class UnifiedSearchViewModel : ObservableObject
 
     public SongItem Song { get; }
 
+    /// <summary>写入成功后触发（页面据此关闭抽屉）。</summary>
+    public event EventHandler? Applied;
+
     [ObservableProperty] private string searchTitle = "";
     [ObservableProperty] private string searchArtist = "";
     [ObservableProperty] private bool isBusy;
@@ -276,7 +279,7 @@ public partial class UnifiedSearchViewModel : ObservableObject
                 if (ok)
                 {
                     StatusText = $"已写入 {okCount} 项（{(writeLyrics ? "歌词" : "")}{(writeLyrics && writeCover ? " + " : "")}{(writeCover ? "封面" : "")}）";
-                    ShowPreview = false;
+                    Applied?.Invoke(this, EventArgs.Empty);
                 }
                 else
                 {

@@ -1,16 +1,18 @@
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
+using CatClawMusic.Plugins.Lrclib.Controls;
 
 namespace CatClawMusic.Plugins.Lrclib;
 
 /// <summary>
 /// 统一搜索页：同时搜索歌词（LRCLIB + Lyrico 多源）和封面（iTunes），
 /// 结果合并展示（封面缩略图 + 标题/艺人 + 歌词/封面标记），
-/// 点击结果直接写入标签（歌词 + 封面）。
+/// 点击结果弹出宿主同款底部抽屉（封面 + 歌词预览），一键写入标签。
 /// </summary>
 public class UnifiedSearchPage : ContentPage
 {
     private readonly UnifiedSearchViewModel _vm;
+    private readonly AppBottomSheet _sheet;
     private bool _searchExpanded;
     private View? _searchBarRow;
     private View? _searchPanel;
@@ -43,9 +45,12 @@ public class UnifiedSearchPage : ContentPage
         content.Add(_searchContainer, 0, 0);
         content.Add(list, 0, 1);
 
-        var sheet = BuildPreviewSheet();
-        Grid.SetRowSpan(sheet, 2);
-        content.Add(sheet, 0, 0);
+        _sheet = new AppBottomSheet();
+        _sheet.ClearContent();
+        _sheet.AddContent(BuildPreviewContent());
+        _vm.Applied += (_, _) => _ = _sheet.CloseAsync();
+        Grid.SetRowSpan(_sheet, 2);
+        content.Add(_sheet, 0, 0);
 
         Content = content;
     }
@@ -188,6 +193,7 @@ public class UnifiedSearchPage : ContentPage
         {
             if (e.CurrentSelection.FirstOrDefault() is not UnifiedSearchResult item) return;
             _vm.OpenPreviewCommand.Execute(item);
+            _sheet.Open();
             list.SelectedItem = null; // 清除选中，允许再次点击同一条
         };
         list.SetBinding(ItemsView.ItemsSourceProperty, nameof(UnifiedSearchViewModel.Results));
@@ -284,14 +290,9 @@ public class UnifiedSearchPage : ContentPage
         return card;
     }
 
-    // ── 底部预览面板（封面 + 歌词）──
-    private Grid BuildPreviewSheet()
+    // ── 底部抽屉内容（封面 + 歌词预览，遮罩/动画由宿主同款 AppBottomSheet 提供）──
+    private View BuildPreviewContent()
     {
-        var scrim = new BoxView { Color = Color.FromArgb("#8C000000") };
-        var scrimTap = new TapGestureRecognizer();
-        scrimTap.Tapped += (_, _) => _vm.ClosePreviewCommand.Execute(null);
-        scrim.GestureRecognizers.Add(scrimTap);
-
         // 标题
         var sheetTitle = NewLabel(17, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", tail: true);
         sheetTitle.SetBinding(Label.TextProperty,
@@ -377,41 +378,19 @@ public class UnifiedSearchPage : ContentPage
         applyButton.SetBinding(Button.IsEnabledProperty,
             new Binding(nameof(UnifiedSearchViewModel.IsBusy)) { Converter = new InverseBooleanConverter(), Source = _vm });
 
-        var panel = new Border
+        return new VerticalStackLayout
         {
-            StrokeThickness = 0,
-            Background = GetBrush("WindowBackgroundColor", "#FF2A254E"),
-            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(20, 20, 0, 0) },
-            Padding = new Thickness(20, 16, 20, 24),
-            Content = new VerticalStackLayout
+            Spacing = 12,
+            Children =
             {
-                Spacing = 12,
-                Children =
-                {
-                    sheetTitle,
-                    sheetSubtitle,
-                    coverBox,
-                    lyricsHeader,
-                    lyricsScroll,
-                    applyButton,
-                },
+                sheetTitle,
+                sheetSubtitle,
+                coverBox,
+                lyricsHeader,
+                lyricsScroll,
+                applyButton,
             },
         };
-
-        var sheet = new Grid
-        {
-            RowDefinitions =
-            {
-                new RowDefinition(GridLength.Star),
-                new RowDefinition(GridLength.Auto),
-            },
-        };
-        sheet.Add(scrim, 0, 0);
-        sheet.Add(panel, 0, 1);
-        sheet.BindingContext = _vm;
-        sheet.SetBinding(Grid.IsVisibleProperty, nameof(UnifiedSearchViewModel.ShowPreview));
-
-        return sheet;
     }
 
     // ── 小工具 ──
