@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>结果预览页 · 响应式重设计原型</title>
+<style>
+/* ═══════════════ 原型外壳 ═══════════════ */
+:root{
+  --primary:#8C7BFF; --primary-soft:rgba(140,123,255,.16); --primary-line:#B7A9FF;
+  --text:#F7F8FF; --text2:#C2C6E4; --text3:#8E93B8;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+body{background:#0D0C1E;font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:var(--text);min-height:100vh;padding:22px 22px 60px}
+.proto-header{display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:14px}
+.proto-header h1{font-size:17px;font-weight:700;letter-spacing:.5px}
+.proto-header .sub{font-size:12px;color:var(--text3)}
+.device-switch{display:flex;gap:6px;margin-left:auto;background:rgba(255,255,255,.06);padding:4px;border-radius:12px}
+.device-switch button{border:none;cursor:pointer;background:transparent;color:var(--text3);font-size:13px;padding:7px 16px;border-radius:9px;font-family:inherit;transition:.18s}
+.device-switch button:hover{color:var(--text2)}
+.device-switch button.active{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 4px 14px rgba(140,123,255,.35)}
+.stage{display:flex;justify-content:center;padding:8px 0 26px}
+.shell-box{position:relative;overflow:hidden;border-radius:26px;box-shadow:0 24px 70px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08)}
+.shell{position:absolute;top:0;left:0;transform-origin:top left;background:#151331}
+.proto-notes{max-width:1280px;margin:0 auto;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:16px;padding:18px 22px}
+.proto-notes h2{font-size:14px;margin-bottom:12px;color:var(--text2)}
+.proto-notes .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:8px 28px}
+.proto-notes li{font-size:12.5px;color:var(--text3);line-height:1.75;list-style:none;padding-left:16px;position:relative}
+.proto-notes li::before{content:"";position:absolute;left:0;top:.72em;width:6px;height:6px;border-radius:2px;background:var(--primary)}
+.proto-notes b{color:var(--text2);font-weight:600}
+.proto-notes .hint{margin-top:12px;font-size:12px;color:var(--primary-line);background:var(--primary-soft);border-radius:10px;padding:9px 13px}
+
+/* ═══════════════ 预览页本体（类名全部 pv- 前缀隔离） ═══════════════ */
+.preview-page{
+  --bg:#151331; --panel:#1A1838; --card:rgba(255,255,255,.06); --card-strong:rgba(255,255,255,.11);
+  --line:rgba(255,255,255,.09);
+  width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;
+  background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+}
+
+/* ── 顶栏：返回 + 标题 |（宽屏）写入选项 + 写入按钮 ── */
+.pv-topbar{height:46px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+.pv-back{width:34px;height:34px;flex:none;border:none;border-radius:10px;background:transparent;color:var(--text2);font-size:17px;cursor:pointer}
+.pv-back:hover{background:var(--card)}
+.pv-title{font-size:15px;font-weight:700}
+.pv-topbar-space{flex:1}
+.pv-write{height:32px;flex:none;border:none;border-radius:16px;padding:0 18px;cursor:pointer;
+  background:linear-gradient(135deg,#8C7BFF,#B39CFF);color:#fff;font-size:13px;font-weight:700;font-family:inherit;
+  box-shadow:0 4px 14px rgba(140,123,255,.35);transition:.15s;display:flex;align-items:center;gap:7px}
+.pv-write:hover{filter:brightness(1.1)}
+.pv-write:disabled{opacity:.38;box-shadow:none;cursor:not-allowed;filter:none}
+.pv-write .spin{width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none}
+.pv-write.busy .spin{display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── 写入选项胶囊（宽屏在顶栏；手机在底部栏，DOM 两处状态由 JS 同步） ── */
+.pv-opts{display:none;align-items:center;gap:8px}
+.pv-opt{height:30px;border-radius:15px;padding:0 13px 0 10px;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.04);
+  color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;transition:.15s}
+.pv-opt .dot{width:15px;height:15px;border-radius:50%;border:1.5px solid #5A5F86;display:flex;align-items:center;justify-content:center;
+  font-size:10px;color:#fff;flex:none;transition:.15s}
+.pv-opt.on{border-color:rgba(140,123,255,.55);background:var(--primary-soft);color:#CFC5FF}
+.pv-opt.on .dot{background:var(--primary);border-color:var(--primary)}
+
+/* ── 页面主体 ── */
+.pv-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+
+/* ── 信息区（手机：横向头部；宽屏：左侧栏） ── */
+.pv-info{flex:none;display:flex;align-items:center;gap:14px;padding:12px 16px}
+.pv-cover{width:64px;height:64px;flex:none;border-radius:14px;position:relative;overflow:hidden;
+  background:radial-gradient(130% 130% at 18% 12%,#423B6E 0%,#262247 48%,#171531 100%);
+  box-shadow:0 6px 18px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.08)}
+.pv-cover::before{content:"♪";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:26px;font-weight:800;color:rgba(183,169,255,.55)}
+.pv-cover::after{content:"";position:absolute;width:70px;height:70px;border-radius:50%;right:-26px;top:-26px;
+  background:radial-gradient(circle,rgba(140,123,255,.35),transparent 70%)}
+.pv-info-text{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}
+.pv-song-title{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-song-sub{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-badges{display:flex;gap:6px;margin-top:2px;flex-wrap:wrap}
+.pv-badge{font-size:10px;font-weight:700;border-radius:9px;padding:2px 8px;line-height:1.5}
+.pv-badge.lyrics{background:rgba(140,123,255,.18);color:#B7A9FF}
+.pv-badge.cover{background:rgba(74,222,128,.15);color:#4ADE80}
+.pv-badge.src{background:rgba(255,255,255,.10);color:var(--text3);font-weight:500}
+.pv-stat{display:none}
+.pv-status{display:none}
+
+/* ── Tab 行 + 模式 chips ── */
+.pv-tabsrow{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:0 10px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.pv-tabs{display:flex;flex:none;min-width:0}
+.pv-tab{border:none;background:transparent;cursor:pointer;font-family:inherit;position:relative;height:42px;padding:0 14px;
+  font-size:14px;color:var(--text3);transition:color .15s}
+.pv-tab:hover{color:var(--text2)}
+.pv-tab.on{color:var(--text);font-weight:700}
+.pv-tab.on::after{content:"";position:absolute;left:14px;right:14px;bottom:0;height:2.5px;border-radius:2px;background:var(--primary)}
+.pv-chips{display:none;align-items:center;gap:8px;height:42px}
+.pv-chips.show{display:flex}
+.pv-chip{height:27px;border-radius:14px;border:none;padding:0 13px;cursor:pointer;font-family:inherit;
+  font-size:12px;color:var(--text3);background:rgba(255,255,255,.07);transition:.15s;white-space:nowrap}
+.pv-chip:hover{color:var(--text2)}
+.pv-chip.on{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 3px 10px rgba(140,123,255,.4)}
+.pv-chip-sep{width:1px;height:18px;background:var(--line)}
+
+/* 窄屏（手机竖屏）：Tab 行不压缩，chips 整体换到第二行独立显示，放不下可横向滑动 */
+.shell.mobile .pv-chips.show{display:flex;width:100%;height:38px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.shell.mobile .pv-chips.show::-webkit-scrollbar{display:none}
+.shell.mobile .pv-chip{height:26px;font-size:11.5px;padding:0 11px;flex:none}
+
+/* ── 内容区 ── */
+.pv-content{flex:1;min-height:0;position:relative;overflow:hidden}
+.pv-panel{position:absolute;inset:0;display:none;flex-direction:column}
+.pv-panel.on{display:flex}
+
+/* 歌词面板 */
+.pv-lyrics-scroll{flex:1;overflow-y:auto;padding:14px 18px 22px;scrollbar-width:thin;scrollbar-color:#3A3665 transparent}
+.pv-lyrics-scroll::-webkit-scrollbar{width:8px}
+.pv-lyrics-scroll::-webkit-scrollbar-thumb{background:#3A3665;border-radius:4px}
+.pv-lrow{display:flex;gap:14px;padding:5.5px 10px;border-radius:9px;line-height:1.6}
+.pv-lrow:hover{background:var(--card)}
+.pv-ts{flex:none;min-width:70px;font-family:Consolas,"Cascadia Mono",monospace;font-size:11.5px;color:#6E7396;padding-top:2.5px;text-align:right}
+.pv-ltext{font-size:13.5px;color:var(--text2);word-break:break-word}
+.pv-w{border-radius:4px;padding:0 1px}
+.pv-wt{font-family:Consolas,monospace;font-size:9.5px;color:rgba(140,123,255,.55);vertical-align:baseline;margin:0 2px 0 1px;white-space:nowrap}
+.pv-code{flex:1;overflow-y:auto;padding:16px 18px;font-family:Consolas,"Cascadia Mono",monospace;font-size:12px;line-height:1.75;color:#C2C6E4;white-space:pre;scrollbar-width:thin}
+.pv-code .tg{color:#B7A9FF}.pv-code .at{color:#7EC8E3}.pv-code .st{color:#9ECE8C}.pv-code .tx{color:#C2C6E4}
+.pv-lyrics-foot{flex:none;padding:8px 18px 12px;font-size:11px;color:var(--text3);text-align:center;border-top:1px solid var(--line);background:var(--panel)}
+
+/* 封面面板 */
+.pv-cover-panel{flex:1;overflow-y:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:22px}
+.pv-cover-lg{width:min(340px,72%);aspect-ratio:1;border-radius:20px;position:relative;overflow:hidden;
+  background:radial-gradient(130% 130% at 18% 12%,#423B6E 0%,#262247 48%,#171531 100%);
+  box-shadow:0 18px 50px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.09)}
+.pv-cover-lg::before{content:"♪";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:84px;font-weight:800;color:rgba(183,169,255,.5)}
+.pv-cover-lg::after{content:"";position:absolute;width:190px;height:190px;border-radius:50%;right:-70px;top:-70px;
+  background:radial-gradient(circle,rgba(140,123,255,.4),transparent 70%)}
+.pv-cover-meta{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.pv-cover-meta .pv-badge{font-size:11px;padding:4px 11px}
+.pv-cover-note{font-size:12px;color:var(--text3);text-align:center;line-height:1.7;max-width:380px}
+
+/* 元数据面板 */
+.pv-meta-scroll{flex:1;overflow-y:auto;padding:16px}
+.pv-meta-grid{display:grid;grid-template-columns:1fr;gap:10px;max-width:640px;margin:0 auto;width:100%}
+.pv-mitem{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:13px;padding:11px 15px}
+.pv-mk{font-size:11.5px;color:var(--text3);margin-bottom:4px;display:flex;align-items:center;gap:7px}
+.pv-mv{font-size:14px;font-weight:650;word-break:break-all;line-height:1.5}
+.pv-mold{font-size:11px;color:var(--text3);margin-top:4px;word-break:break-all}
+.pv-mold b{color:#6E7396;font-weight:500;text-decoration:line-through;text-decoration-color:rgba(251,191,36,.5)}
+.pv-tag-new{font-size:9.5px;font-weight:700;color:#FBBF24;background:rgba(251,191,36,.13);border-radius:6px;padding:1px 6px}
+.pv-tag-same{font-size:9.5px;color:var(--text3);background:rgba(255,255,255,.06);border-radius:6px;padding:1px 6px}
+
+/* ── 底部操作栏（手机端） ── */
+.pv-bottom{flex:none;display:flex;align-items:center;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  background:rgba(26,24,56,.78);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border-top:1px solid var(--line);justify-content:center}
+
+/* ── Toast ── */
+.pv-toast{position:absolute;top:58px;left:50%;transform:translateX(-50%) translateY(-8px);opacity:0;pointer-events:none;
+  background:rgba(34,31,70,.95);border:1px solid rgba(140,123,255,.4);color:var(--text);font-size:12.5px;
+  border-radius:12px;padding:9px 16px;display:flex;align-items:center;gap:8px;transition:.25s;box-shadow:0 10px 30px rgba(0,0,0,.45);white-space:nowrap;z-index:9}
+.pv-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.pv-toast .ok{color:#4ADE80;font-weight:800}
+
+/* ═══════════════ 宽屏（PC / 手机横屏）：shell 带 .wide ═══════════════ */
+.shell.wide .pv-opts{display:flex}
+.shell.wide .pv-bottom{display:none}
+.shell.wide .pv-topbar{height:50px;padding:0 16px}
+.shell.wide .pv-title{font-size:15px}
+
+.shell.wide .pv-body{flex-direction:row}
+/* 信息区 → 左侧栏 */
+.shell.wide .pv-info{width:284px;flex:none;flex-direction:column;align-items:stretch;gap:12px;padding:22px 20px;
+  border-right:1px solid var(--line);overflow-y:auto;background:var(--panel)}
+.shell.wide .pv-cover{width:100%;height:auto;aspect-ratio:1;border-radius:18px}
+.shell.wide .pv-cover::before{font-size:58px}
+.shell.wide .pv-info-text{align-items:flex-start}
+.shell.wide .pv-song-title{font-size:19px;white-space:normal;line-height:1.35}
+.shell.wide .pv-song-sub{white-space:normal;line-height:1.6}
+.shell.wide .pv-badges{justify-content:flex-start}
+/* 统计卡 + 状态（仅宽屏显示） */
+.shell.wide .pv-stat{display:block;background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:13px;padding:12px 15px;margin-top:2px}
+.shell.wide .pv-stat .k{font-size:11px;color:var(--text3);margin-bottom:7px}
+.shell.wide .pv-stat .row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--text2);padding:3px 0}
+.shell.wide .pv-stat .row b{color:var(--primary-line);font-weight:700}
+.shell.wide .pv-status{display:block;font-size:11px;color:var(--text3);line-height:1.6;margin-top:2px}
+
+/* Tab 行 + chips 同层不换行 */
+.shell.wide .pv-tabsrow{flex-wrap:nowrap;padding:0 20px}
+.shell.wide .pv-tabs{flex:none}
+.shell.wide .pv-chips{height:44px;margin-left:auto}
+.shell.wide .pv-lyrics-scroll{padding:16px 24px 26px}
+.shell.wide .pv-lrow{padding:6px 12px}
+.shell.wide .pv-code{padding:18px 24px}
+.shell.wide .pv-meta-grid{grid-template-columns:1fr 1fr;gap:12px}
+.shell.landscape .pv-info{width:236px;padding:14px 16px}
+.shell.landscape .pv-cover{border-radius:14px}
+.shell.landscape .pv-song-title{font-size:16px}
+.shell.landscape .pv-stat{display:none}
+</style>
+</head>
+<body>
+
+<header class="proto-header">
+  <div>
+    <h1>结果预览页 · 响应式重设计</h1>
+    <div class="sub">一套 UI 两种形态 · 断点 720px（对应 ThemeHelper.IsWide）· 点击页面内元素可交互体验</div>
+  </div>
+  <div class="device-switch">
+    <button data-device="mobile" class="active">手机竖屏</button>
+    <button data-device="landscape">手机横屏</button>
+    <button data-device="pc">PC 桌面</button>
+  </div>
+</header>
+
+<div class="stage"><div class="shell-box" id="shellBox">
+<div class="shell mobile" id="shell" data-w="390" data-h="760">
+
+  <!-- ═════════ 预览页 ═════════ -->
+  <div class="preview-page" id="pv">
+
+    <!-- 顶栏 -->
+    <div class="pv-topbar">
+      <button class="pv-back">←</button>
+      <span class="pv-title">结果预览</span>
+      <div class="pv-topbar-space"></div>
+      <div class="pv-opts" id="optsTop"></div>
+      <button class="pv-write" id="writeBtn"><span class="spin"></span><span id="writeText">写入</span></button>
+    </div>
+
+    <!-- 主体 -->
+    <div class="pv-body">
+
+      <!-- 信息区：手机=横向头部 / 宽屏=左侧栏 -->
+      <div class="pv-info">
+        <div class="pv-cover"></div>
+        <div class="pv-info-text">
+          <div class="pv-song-title">All Time Low</div>
+          <div class="pv-song-sub">Kurt Hugo Schneider · Piano Acoustic Covers Vol. 1 · 3:21</div>
+          <div class="pv-badges">
+            <span class="pv-badge lyrics">同步歌词</span>
+            <span class="pv-badge cover">封面</span>
+            <span class="pv-badge src">LRCLIB</span>
+          </div>
+        </div>
+        <div class="pv-stat">
+          <div class="k">本次搜索候选</div>
+          <div class="row"><span>歌词结果</span><b>13</b></div>
+          <div class="row"><span>封面结果</span><b>50</b></div>
+          <div class="row"><span>当前选中</span><b>#1 LRCLIB</b></div>
+        </div>
+        <div class="pv-status" id="pvStatus">就绪 · 勾选要写入的内容后点击右上角「写入」</div>
+      </div>
+
+      <!-- Tab + 模式切换 -->
+      <div style="display:flex;flex-direction:column;flex:1;min-width:0;min-height:0">
+        <div class="pv-tabsrow">
+          <div class="pv-tabs" id="pvTabs">
+            <button class="pv-tab on" data-tab="0">歌词</button>
+            <button class="pv-tab" data-tab="1">封面</button>
+            <button class="pv-tab" data-tab="2">元数据</button>
+          </div>
+          <div class="pv-chips show" id="pvChips">
+            <button class="pv-chip on" data-mode="0">逐行</button>
+            <button class="pv-chip" data-mode="1">逐字</button>
+            <button class="pv-chip" data-mode="2">增强逐字</button>
+            <button class="pv-chip" data-mode="3">TTML</button>
+          </div>
+        </div>
+
+        <!-- 内容 -->
+        <div class="pv-content">
+          <!-- Tab 0 歌词 -->
+          <div class="pv-panel on" data-panel="0">
+            <div class="pv-lyrics-scroll" id="lyricsScroll"></div>
+            <div class="pv-code" id="codeScroll" style="display:none"></div>
+            <div class="pv-lyrics-foot" id="lyricsFoot"></div>
+          </div>
+          <!-- Tab 1 封面 -->
+          <div class="pv-panel" data-panel="1">
+            <div class="pv-cover-panel">
+              <div class="pv-cover-lg"></div>
+              <div class="pv-cover-meta">
+                <span class="pv-badge src">LRCLIB</span>
+                <span class="pv-badge cover">高分辨率 1400×1400</span>
+              </div>
+              <div class="pv-cover-note">写入时将下载高清原图并嵌入音频文件（勾选「封面」后生效）</div>
+            </div>
+          </div>
+          <!-- Tab 2 元数据 -->
+          <div class="pv-panel" data-panel="2">
+            <div class="pv-meta-scroll"><div class="pv-meta-grid" id="metaGrid"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部操作栏（仅手机） -->
+    <div class="pv-bottom"><div class="pv-opts" id="optsBottom"></div></div>
+
+    <div class="pv-toast" id="pvToast"><span class="ok">✓</span><span id="pvToastText"></span></div>
+  </div>
+
+</div>
+</div></div>
+
+<!-- ═════════ 设计说明 ═════════ -->
+<div class="proto-notes">
+  <h2>设计要点</h2>
+  <div class="grid">
+    <ul>
+      <li><b>一套 UI 两种形态</b>：窄屏（&lt;720）单列——头部、Tab、内容、底部操作栏纵向排布；宽屏（≥720，PC/横屏）左侧 284px 信息栏 + 右侧预览主区，横屏自动压缩信息栏。</li>
+      <li><b>「写入」固定右上角</b>：任何 Tab、任意滚动位置始终可见可点，不被长歌词遮挡。</li>
+      <li><b>模式切换与 Tab 栏同层</b>：宽屏在 Tab 行右侧同一行；窄屏在 Tab 行下方独立一行，不再浮在歌词内容底部造成遮挡。</li>
+    </ul>
+    <ul>
+      <li><b>写入选项归位</b>：窄屏放底部毛玻璃操作栏（拇指易达），宽屏收进顶栏；两处状态实时同步，全部取消时「写入」自动禁用。</li>
+      <li><b>歌词预览结构化</b>：时间戳等宽右对齐 + 正文左对齐，行悬停高亮；逐字/增强模式展示词级时间戳，TTML 以源码样式呈现。</li>
+      <li><b>元数据差异可视化</b>：写入前对照「原始值 → 新值」，有变更的字段标黄「变更」，未变更标灰「相同」，避免误覆盖。</li>
+      <li><b>宽屏信息栏</b>：大封面 + 完整标题（可换行）+ 徽标 + 候选统计（歌词 13 / 封面 50），充分利用桌面横向空间。</li>
+    </ul>
+  </div>
+  <div class="hint">原型可交互：切换顶部设备按钮查看三种形态；页面内 Tab、歌词模式 chips、写入选项勾选、写入按钮均可点击体验。</div>
+</div>
+
+<script>
+/* ═══ 数据 ═══ */
+const LINES = [
+  ['00:11.258','I was the knight in shining armour in your movie'],
+  ['00:18.218','Would put your lips on mine and love the aftertaste'],
+  ['00:21.988',"Now I'm a ghost, I call your name, you look right through me"],
+  ['00:28.668',"You're the reason that I just can't concentrate"],
+  ['00:32.138','I, I, I, I'],
+  ['00:36.402',"Guess it's half timing and the other half's luck"],
+  ['00:40.878','Wherever you are is the place I wanna be'],
+  ['00:45.312',"Living in the moment 'cause I don't wanna wait and see"],
+  ['00:53.560','low, low, low-low-low, low, low, low, low'],
+  ['00:57.940','low, low, low-low-low, low, low, low, low'],
+  ['01:02.310',"I'm at an all time low"],
+  ['01:06.690','low, low, low-low-low, low, low, low, low'],
+];
+const META = [
+  {k:'歌名', v:'All Time Low', old:'All Time Low', same:true},
+  {k:'艺人', v:'Kurt Hugo Schneider', old:'Kurt Hugo Schneider', same:true},
+  {k:'专辑', v:'Piano Acoustic Covers Vol. 1', old:'未知专辑', same:false},
+  {k:'时长', v:'3:21', old:'3:21', same:true},
+  {k:'来源', v:'LRCLIB', old:'—', same:false},
+];
+
+const pad=(n,l=2)=>String(n).padStart(l,'0');
+const fmtTs=s=>{const m=Math.floor(s/60),sec=Math.floor(s%60),ms=Math.round((s%1)*1000);return `${pad(m)}:${pad(sec)}.${pad(ms,3)}`};
+const parseTs=t=>{const[m,s]=t.split(':');return +m*60+ +s};
+
+/* 逐字/增强：词级时间戳（确定性伪随机） */
+function words(line){
+  const t0=parseTs(line[0]);
+  let t=t0; const out=[];
+  line[1].split(' ').forEach((w,i)=>{
+    const dur=Math.min(.46,.12+w.length*.055+((i*37)%13)/160);
+    out.push({w, b:t, e:t+dur}); t+=dur+.09;
+  });
+  return {t0,words:out};
+}
+
+/* ═══ 渲染 ═══ */
+const $=s=>document.querySelector(s);
+const el=(cls,html)=>{const d=document.createElement('div');d.className=cls;if(html!=null)d.innerHTML=html;return d};
+
+function renderLyrics(mode){
+  const scroll=$('#lyricsScroll'), code=$('#codeScroll'), foot=$('#lyricsFoot');
+  const name=['逐行','逐字','增强逐字','TTML'][mode];
+  if(mode===3){
+    scroll.style.display='none'; code.style.display='block';
+    let xml=`<span class="tg">&lt;tt</span> <span class="at">xmlns</span>=<span class="st">"http://www.w3.org/ns/ttml"</span><span class="tg">&gt;</span>\n <span class="tg">&lt;body&gt;&lt;div&gt;</span>\n`;
+    LINES.slice(0,4).forEach(l=>{
+      const {t0,words:ws}=words(l); const end=ws[ws.length-1].e;
+      xml+=`  <span class="tg">&lt;p</span> <span class="at">begin</span>=<span class="st">"${l[0]}"</span> <span class="at">end</span>=<span class="st">"${fmtTs(end)}"</span><span class="tg">&gt;</span>\n`;
+      xml+='   '+ws.map(w=>`<span class="tg">&lt;span</span> <span class="at">begin</span>=<span class="st">"${fmtTs(w.b)}"</span> <span class="at">end</span>=<span class="st">"${fmtTs(w.e)}"</span><span class="tg">&gt;</span><span class="tx">${w.w}</span><span class="tg">&lt;/span&gt;</span>`).join(' ')+'\n';
+      xml+=`  <span class="tg">&lt;/p&gt;</span>\n`;
+    });
+    xml+=`  <span class="tx">… 共 ${LINES.length} 行</span>\n <span class="tg">&lt;/div&gt;&lt;/body&gt;&lt;/tt&gt;</span>`;
+    code.innerHTML=xml;
+    foot.textContent=`TTML 源码预览 · ${LINES.length} 行`;
+    return;
+  }
+  scroll.style.display='block'; code.style.display='none'; scroll.innerHTML='';
+  LINES.forEach(l=>{
+    const row=el('pv-lrow');
+    const ts=el('pv-ts',l[0]); row.appendChild(ts);
+    if(mode===0){ row.appendChild(el('pv-ltext',l[1])); }
+    else if(mode===1){
+      const{words:ws}=words(l);
+      const tx=document.createElement('div'); tx.className='pv-ltext';
+      ws.forEach(w=>{ tx.insertAdjacentHTML('beforeend',
+        `<span class="pv-w">${w.w}</span><span class="pv-wt">&lt;${fmtTs(w.b).slice(3)}&gt;</span> `); });
+      row.appendChild(tx);
+    } else {
+      const{words:ws}=words(l);
+      const tx=document.createElement('div'); tx.className='pv-ltext';
+      ws.forEach(w=>{ tx.insertAdjacentHTML('beforeend',
+        `<span class="pv-wt">(${fmtTs(w.b).slice(3)},${Math.round(w.e-w.b)}ms)</span><span class="pv-w">${w.w}</span> `); });
+      row.appendChild(tx);
+    }
+    scroll.appendChild(row);
+  });
+  foot.textContent=`共 ${LINES.length} 行 · ${name}模式预览`;
+}
+
+function renderMeta(){
+  $('#metaGrid').innerHTML=META.map(m=>`
+    <div class="pv-mitem">
+      <div class="pv-mk">${m.k}${m.same
+        ? '<span class="pv-tag-same">相同</span>'
+        : '<span class="pv-tag-new">变更</span>'}</div>
+      <div class="pv-mv">${m.v}</div>
+      ${m.same?'':`<div class="pv-mold">原始：<b>${m.old}</b></div>`}
+    </div>`).join('');
+}
+
+/* ═══ 写入选项（顶栏 + 底部两处同步） ═══ */
+const OPTS=[{k:'元数据',on:true},{k:'歌词',on:true},{k:'封面',on:true}];
+function renderOpts(){
+  const html=OPTS.map((o,i)=>`<button class="pv-opt ${o.on?'on':''}" data-opt="${i}"><span class="dot">${o.on?'✓':''}</span>${o.k}</button>`).join('');
+  $('#optsTop').innerHTML=html; $('#optsBottom').innerHTML=html;
+  const any=OPTS.some(o=>o.on);
+  $('#writeBtn').disabled=!any;
+  $('#pvStatus').textContent=any
+    ?`就绪 · 将写入：${OPTS.filter(o=>o.on).map(o=>o.k).join(' + ')}`
+    :'未勾选任何写入项 ·「写入」已禁用';
+  document.querySelectorAll('.pv-opt').forEach(b=>b.onclick=()=>{
+    OPTS[+b.dataset.opt].on=!OPTS[+b.dataset.opt].on; renderOpts();
+  });
+}
+
+/* ═══ Tab / 模式 ═══ */
+let mode=0;
+document.querySelectorAll('.pv-tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.pv-tab').forEach(x=>x.classList.toggle('on',x===t));
+  const i=+t.dataset.tab;
+  document.querySelectorAll('.pv-panel').forEach(p=>p.classList.toggle('on',+p.dataset.panel===i));
+  $('#pvChips').classList.toggle('show',i===0);
+});
+document.querySelectorAll('.pv-chip').forEach(c=>c.onclick=()=>{
+  document.querySelectorAll('.pv-chip').forEach(x=>x.classList.toggle('on',x===c));
+  mode=+c.dataset.mode; renderLyrics(mode);
+});
+
+/* ═══ 写入模拟 ═══ */
+$('#writeBtn').onclick=()=>{
+  const btn=$('#writeBtn'); btn.classList.add('busy'); btn.disabled=true;
+  $('#writeText').textContent='写入中';
+  setTimeout(()=>{
+    btn.classList.remove('busy'); $('#writeText').textContent='写入';
+    const items=OPTS.filter(o=>o.on).map(o=>o.k).join(' + ');
+    $('#pvToastText').textContent=`已写入：${items}${mode<3?'（'+['逐行','逐字','增强逐字'][mode]+'）':''}`;
+    $('#pvStatus').textContent=`完成 · ${items} 已写入文件标签`;
+    const t=$('#pvToast'); t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'),2400);
+    renderOpts();
+  },1300);
+};
+
+/* ═══ 设备切换 + 缩放适配 ═══ */
+const DEVICES={
+  mobile:{w:390,h:760,cls:'mobile'},
+  landscape:{w:844,h:410,cls:'landscape wide'},
+  pc:{w:1280,h:800,cls:'pc wide'},
+};
+function setDevice(key){
+  const d=DEVICES[key];
+  const shell=$('#shell');
+  shell.className='shell '+d.cls; shell.dataset.w=d.w; shell.dataset.h=d.h;
+  document.querySelectorAll('.device-switch button').forEach(b=>b.classList.toggle('active',b.dataset.device===key));
+  fit();
+}
+function fit(){
+  const shell=$('#shell'), box=$('#shellBox');
+  const w=+shell.dataset.w, h=+shell.dataset.h;
+  const avail=Math.min(document.body.clientWidth-44, 1280);
+  const s=Math.min(1, avail/w);
+  // shell 必须有显式宽高：preview-page 的 height:100% 依赖它，
+  // 否则整条 flex:1 链高度不定，内容区会塌陷成空白
+  shell.style.width=w+'px'; shell.style.height=h+'px';
+  shell.style.transform=`scale(${s})`;
+  box.style.width=(w*s)+'px'; box.style.height=(h*s)+'px';
+}
+window.addEventListener('resize',fit);
+document.querySelectorAll('.device-switch button').forEach(b=>b.onclick=()=>setDevice(b.dataset.device));
+
+/* init */
+renderLyrics(0); renderMeta(); renderOpts(); setDevice('mobile');
+</script>
+</body>
+</html>
