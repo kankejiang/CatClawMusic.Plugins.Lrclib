@@ -180,9 +180,15 @@ public class UnifiedSearchPage : ContentPage
     {
         var list = new CollectionView
         {
-            SelectionMode = SelectionMode.None,
+            SelectionMode = SelectionMode.Single,
             Margin = new Thickness(12, 4, 12, 0),
             ItemTemplate = new DataTemplate(BuildResultCard),
+        };
+        list.SelectionChanged += (s, e) =>
+        {
+            if (e.CurrentSelection.FirstOrDefault() is not UnifiedSearchResult item) return;
+            _vm.OpenPreviewCommand.Execute(item);
+            list.SelectedItem = null; // 清除选中，允许再次点击同一条
         };
         list.SetBinding(ItemsView.ItemsSourceProperty, nameof(UnifiedSearchViewModel.Results));
         return list;
@@ -274,15 +280,6 @@ public class UnifiedSearchPage : ContentPage
             Margin = new Thickness(0, 0, 0, 8),
             Content = row,
         };
-
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += (s, e) =>
-        {
-            var src = (s as TapGestureRecognizer)?.Parent as BindableObject;
-            if (src?.BindingContext is not UnifiedSearchResult item) return;
-            _vm.OpenPreviewCommand.Execute(item);
-        };
-        card.GestureRecognizers.Add(tap);
 
         return card;
     }
@@ -411,6 +408,7 @@ public class UnifiedSearchPage : ContentPage
         };
         sheet.Add(scrim, 0, 0);
         sheet.Add(panel, 0, 1);
+        sheet.BindingContext = _vm;
         sheet.SetBinding(Grid.IsVisibleProperty, nameof(UnifiedSearchViewModel.ShowPreview));
 
         return sheet;
