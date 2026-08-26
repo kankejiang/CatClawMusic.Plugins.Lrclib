@@ -36,8 +36,7 @@ public class SettingsCenterPage : ContentPage
             Children =
             {
                 GroupTitle("歌词"),
-                MakeEntry("歌词匹配", "手动搜索 LRCLIB 候选并指定使用歌词", OpenManualMatch),
-                MakeEntry("源插件管理", "Lyrico 源插件：导入/启停/配置/测试/卸载", OpenPluginManager),
+                MakeEntry("Lyrico 插件管理", "源插件导入/启停/配置/测试/卸载，LRCLIB 未命中时兜底取词", OpenPluginManager),
 
                 GroupTitle("编辑"),
                 MakeEntry("编辑字段可见性", "控制编辑标签页显示哪些字段", () => PluginNav.PushAsync(new EditFieldVisibilityPage())),

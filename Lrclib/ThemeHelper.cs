@@ -243,6 +243,8 @@ internal static class SafeAreaInsetsProvider
     public static event Action? InsetsChanged;
 
     private const double AndroidFallbackTopDp = 24;
+    /// <summary>顶部 inset 缩放系数：返回头已占视觉空间，无需完整状态栏留白。</summary>
+    private const double TopInsetScale = 0.45;
     private static bool _tried;
     private static Func<(double Top, double Bottom)>? _getter;
 
@@ -255,11 +257,13 @@ internal static class SafeAreaInsetsProvider
             {
                 var (top, bottom) = _getter();
                 if (DeviceInfo.Platform == DevicePlatform.Android && top < 1) top = AndroidFallbackTopDp;
-                return (Math.Max(0, top), Math.Max(0, bottom));
+                // 顶部乘系数：返回头本身已有视觉高度，无需完整状态栏高度的留白，
+                // 只保留大部分避让，避免页面到状态栏距离过大。
+                return (Math.Max(0, top * TopInsetScale), Math.Max(0, bottom));
             }
             catch { }
         }
-        return (DeviceInfo.Platform == DevicePlatform.Android ? AndroidFallbackTopDp : 0, 0);
+        return (DeviceInfo.Platform == DevicePlatform.Android ? AndroidFallbackTopDp * TopInsetScale : 0, 0);
     }
 
     private static void TryInit()
