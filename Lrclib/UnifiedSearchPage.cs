@@ -1,22 +1,28 @@
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
-using CatClawMusic.Plugins.Lrclib.Controls;
 
 namespace CatClawMusic.Plugins.Lrclib;
 
 /// <summary>
 /// 统一搜索页：同时搜索歌词（LRCLIB + Lyrico 多源）和封面（iTunes），
 /// 结果合并展示（封面缩略图 + 标题/艺人 + 歌词/封面标记），
-/// 点击结果弹出宿主同款底部抽屉（封面 + 歌词预览），一键写入标签。
+/// 点击结果弹出底部抽屉（封面 + 歌词预览），一键写入标签。
+/// 抽屉直接作为页面根 Grid 的子元素（复刻宿主 AppBottomSheet 思路），避免 ContentView 包装在嵌入式宿主中高度计算不可靠。
 /// </summary>
 public class UnifiedSearchPage : ContentPage
 {
     private readonly UnifiedSearchViewModel _vm;
-    private readonly AppBottomSheet _sheet;
     private bool _searchExpanded;
     private View? _searchBarRow;
     private View? _searchPanel;
     private VerticalStackLayout? _searchContainer;
+
+    // 底部抽屉元素
+    private BoxView? _sheetMask;
+    private Border? _sheetCard;
+    private bool _sheetOpen;
+    private double _panStartY;
+    private double _panStartTy;
 
     public UnifiedSearchPage(SongItem song)
     {
@@ -45,12 +51,9 @@ public class UnifiedSearchPage : ContentPage
         content.Add(_searchContainer, 0, 0);
         content.Add(list, 0, 1);
 
-        _sheet = new AppBottomSheet();
-        _sheet.ClearContent();
-        _sheet.AddContent(BuildPreviewContent());
-        _vm.Applied += (_, _) => _ = _sheet.CloseAsync();
-        Grid.SetRowSpan(_sheet, 2);
-        content.Add(_sheet, 0, 0);
+        // 底部抽屉：遮罩 + 卡片，直接作为根 Grid 子元素（同宿主 AppBottomSheet 思路）
+        BuildSheet(content);
+        _vm.Applied += async (_, _) => await CloseSheetAsync();
 
         Content = content;
     }
@@ -193,7 +196,7 @@ public class UnifiedSearchPage : ContentPage
         {
             if (e.CurrentSelection.FirstOrDefault() is not UnifiedSearchResult item) return;
             _vm.OpenPreviewCommand.Execute(item);
-            _sheet.Open();
+            OpenSheet();
             list.SelectedItem = null; // 清除选中，允许再次点击同一条
         };
         list.SetBinding(ItemsView.ItemsSourceProperty, nameof(UnifiedSearchViewModel.Results));
@@ -290,7 +293,78 @@ public class UnifiedSearchPage : ContentPage
         return card;
     }
 
-    // ── 底部抽屉内容（封面 + 歌词预览，遮罩/动画由宿主同款 AppBottomSheet 提供）──
+    // ── 底部抽屉（遮罩 + 卡片，直接放根 Grid，复刻宿主 AppBottomSheet 思路）──
+    private void BuildSheet(Grid rootGrid)
+    {
+        _sheetMask = new BoxView
+        {
+            Color = Color.FromArgb("#66000000"),
+            Opacity = 0,
+            IsVisible = false,
+            InputTransparent = false,
+        };
+        var maskTap = new TapGestureRecognizer();
+        maskTap.Tapped += async (_, _) => await CloseSheetAsync();
+        _sheetMask.GestureRecognizers.Add(maskTap);
+
+        // 抓握条
+        var gripBar = new BoxView
+        {
+            WidthRequest = 36,
+            HeightRequest = 4,
+            CornerRadius = 2,
+            Color = Color.FromArgb("#50000000"),
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+        };
+        var grip = new Grid
+        {
+            HeightRequest = 32,
+            BackgroundColor = Colors.Transparent,
+            VerticalOptions = LayoutOptions.Start,
+            Children = { gripBar },
+        };
+        var pan = new PanGestureRecognizer();
+        pan.PanUpdated += OnGripPan;
+        grip.GestureRecognizers.Add(pan);
+
+        var previewContent = BuildPreviewContent();
+
+        var sheetGrid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Star),
+            },
+        };
+        sheetGrid.Add(grip, 0, 0);
+        sheetGrid.Add(previewContent, 0, 1);
+
+        _sheetCard = new Border
+        {
+            Background = ThemeHelper.Brush("CardBackgroundStrongColor", "#FF2A254E"),
+            Stroke = ThemeHelper.Brush("GlassStrokeStrongColor", "#33FFFFFF"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(22, 22, 0, 0) },
+            Padding = new Thickness(16, 10, 16, 16),
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.End,
+            Margin = new Thickness(8, 0, 8, 8),
+            TranslationY = 600,
+            Opacity = 0,
+            IsVisible = false,
+            InputTransparent = false,
+            Content = sheetGrid,
+        };
+
+        // 遮罩和卡片直接加入根 Grid，跨两行占满整页
+        Grid.SetRowSpan(_sheetMask, 2);
+        Grid.SetRowSpan(_sheetCard, 2);
+        rootGrid.Add(_sheetMask, 0, 0);
+        rootGrid.Add(_sheetCard, 0, 0);
+    }
+
     private View BuildPreviewContent()
     {
         // 标题
@@ -391,6 +465,116 @@ public class UnifiedSearchPage : ContentPage
                 applyButton,
             },
         };
+    }
+
+    private void OpenSheet()
+    {
+        if (_sheetOpen || _sheetMask == null || _sheetCard == null) return;
+        _sheetOpen = true;
+        _sheetMask.Opacity = 0;
+        _sheetCard.Opacity = 0;
+        _sheetCard.TranslationY = 600;
+        _sheetMask.IsVisible = true;
+        _sheetCard.IsVisible = true;
+        var screenH = ResolveScreenHeight();
+        var sheetH = screenH * 0.8;
+        _sheetCard.HeightRequest = sheetH;
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            _ = _sheetMask.FadeTo(1, 200, Easing.CubicOut);
+            await AnimateSheetCardTranslationYAsync(600, 0, 300);
+            SetSheetCardTranslationY(0);
+        });
+    }
+
+    private async Task CloseSheetAsync()
+    {
+        if (!_sheetOpen || _sheetMask == null || _sheetCard == null) return;
+        _sheetOpen = false;
+        try
+        {
+            _ = _sheetMask.FadeTo(0, 180, Easing.CubicIn);
+            await AnimateSheetCardTranslationYAsync(_sheetCard.TranslationY, 600, 200);
+            await _sheetCard.FadeTo(0, 180, Easing.CubicIn);
+            _sheetMask.IsVisible = false;
+            _sheetCard.IsVisible = false;
+        }
+        catch { }
+    }
+
+    private void SetSheetCardTranslationY(double dp)
+    {
+        if (_sheetCard == null) return;
+        _sheetCard.TranslationY = dp;
+#if ANDROID
+        try
+        {
+            if (_sheetCard.Handler?.PlatformView is global::Android.Views.View nv)
+                nv.TranslationY = (float)(dp * nv.Resources!.DisplayMetrics!.Density);
+        }
+        catch { }
+#endif
+    }
+
+    private async Task AnimateSheetCardTranslationYAsync(double from, double to, uint durationMs)
+    {
+        const int frameMs = 16;
+        for (var t = 0; t < durationMs; t += frameMs)
+        {
+            await Task.Delay(frameMs);
+            var p = Math.Min(1.0, (t + frameMs) / (double)durationMs);
+            var eased = 1 - Math.Pow(1 - p, 3);
+            SetSheetCardTranslationY(from + (to - from) * eased);
+        }
+        SetSheetCardTranslationY(to);
+    }
+
+    private double ResolveScreenHeight()
+    {
+#if ANDROID
+        try
+        {
+            var act = Platform.CurrentActivity;
+            var bounds = act?.Window?.WindowManager?.CurrentWindowMetrics?.Bounds;
+            if (bounds is { } b && b.Height() > 0)
+            {
+                var d = act!.Resources!.DisplayMetrics!.Density;
+                if (d > 0) return b.Height() / d;
+            }
+        }
+        catch { }
+#endif
+        if (Height > 0) return Height;
+        try
+        {
+            var d = DeviceDisplay.Current.MainDisplayInfo;
+            var h = d.Height / d.Density;
+            if (h > 0) return h;
+        }
+        catch { }
+        return 800;
+    }
+
+    private void OnGripPan(object? sender, PanUpdatedEventArgs e)
+    {
+        if (_sheetCard == null) return;
+        switch (e.StatusType)
+        {
+            case GestureStatus.Started:
+                _panStartY = e.TotalY;
+                _panStartTy = _sheetCard.TranslationY;
+                break;
+            case GestureStatus.Running:
+                var dy = e.TotalY - _panStartY;
+                if (dy > 0) SetSheetCardTranslationY(_panStartTy + dy);
+                break;
+            case GestureStatus.Completed:
+                if (_sheetCard.TranslationY > ResolveScreenHeight() * 0.25)
+                    _ = CloseSheetAsync();
+                else
+                    _ = AnimateSheetCardTranslationYAsync(_sheetCard.TranslationY, 0, 180);
+                break;
+        }
     }
 
     // ── 小工具 ──
