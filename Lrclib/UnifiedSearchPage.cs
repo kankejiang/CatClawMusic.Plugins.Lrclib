@@ -15,6 +15,7 @@ public class UnifiedSearchPage : ContentPage
     private View? _searchBarRow;
     private View? _searchPanel;
     private VerticalStackLayout? _searchContainer;
+    private HorizontalStackLayout? _chipStack;
 
     public UnifiedSearchPage(SongItem song)
     {
@@ -28,7 +29,15 @@ public class UnifiedSearchPage : ContentPage
         _searchBarRow = BuildCollapsedBar();
         _searchPanel = BuildExpandedPanel();
         _searchPanel.IsVisible = false;
-        _searchContainer = new VerticalStackLayout { Spacing = 0, Children = { _searchBarRow, _searchPanel } };
+        _searchContainer = new VerticalStackLayout
+        {
+            Spacing = 0,
+            Children = { _searchBarRow, BuildChipLabel(), BuildChipRow() },
+        };
+        _searchContainer.Children.Add(_searchPanel);
+
+        // 来源筛选变化（新搜索/切换来源）时重建 chip 行
+        _vm.SourceFilters.CollectionChanged += (_, _) => RebuildChips();
 
         var list = BuildResultList();
 
@@ -188,8 +197,57 @@ public class UnifiedSearchPage : ContentPage
             _ = PluginNav.PushAsync(new UnifiedSearchPreviewPage(_vm));
             list.SelectedItem = null; // 清除选中，允许再次点击同一条
         };
-        list.SetBinding(ItemsView.ItemsSourceProperty, nameof(UnifiedSearchViewModel.Results));
+        list.SetBinding(ItemsView.ItemsSourceProperty, nameof(UnifiedSearchViewModel.FilteredResults));
         return list;
+    }
+
+    // ── 来源筛选 chips ──
+    private View BuildChipLabel()
+        => new Label
+        {
+            Text = "按来源筛选",
+            FontSize = 11,
+            FontAttributes = FontAttributes.Bold,
+            Margin = new Thickness(16, 6, 16, 2),
+            TextColor = Text("TextSecondaryColor", "#C2C6E4"),
+        };
+
+    private View BuildChipRow()
+    {
+        _chipStack = new HorizontalStackLayout { Spacing = 8, Padding = new Thickness(16, 0, 16, 8) };
+        return new ScrollView
+        {
+            Orientation = ScrollOrientation.Horizontal,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+            Content = _chipStack,
+        };
+    }
+
+    private void RebuildChips()
+    {
+        if (_chipStack == null) return;
+        _chipStack.Children.Clear();
+        foreach (var f in _vm.SourceFilters)
+        {
+            var chip = new Button
+            {
+                Text = f.Label,
+                FontSize = 12,
+                TextColor = f.IsActive ? Colors.White : Text("TextSecondaryColor", "#C2C6E4"),
+                BackgroundColor = f.IsActive ? Text("PrimaryColor", "#8C7BFF") : Color.FromArgb("#1AFFFFFF"),
+                CornerRadius = 16,
+                HeightRequest = 30,
+                Padding = new Thickness(14, 0),
+            };
+            var captured = f;
+            chip.Clicked += (_, _) =>
+            {
+                _vm.SelectSourceCommand.Execute(captured);
+                RebuildChips();
+            };
+            _chipStack.Children.Add(chip);
+        }
     }
 
     private View BuildResultCard()

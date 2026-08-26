@@ -175,17 +175,72 @@ public partial class UnifiedSearchViewModel : ObservableObject
             });
         }
 
-        foreach (var r in merged.Take(50))
-            Results.Add(r);
+        _all = merged.Take(50).ToList();
+        RebuildFilters();
 
         IsBusy = false;
-        var total = Results.Count;
-        var withLyrics = Results.Count(r => r.HasLyrics);
-        var withCover = Results.Count(r => r.HasCover);
+        var total = _all.Count;
+        var withLyrics = _all.Count(r => r.HasLyrics);
+        var withCover = _all.Count(r => r.HasCover);
         StatusText = total == 0
             ? "没有找到结果（检查关键字，或该歌未被收录）"
             : $"找到 {total} 个结果（歌词 {withLyrics} / 封面 {withCover}）";
     }
+
+    // ── 来源筛选 ──
+
+    private List<UnifiedSearchResult> _all = new();
+    private string _selectedSource = "";
+
+    /// <summary>筛选 chip 集合（第一位固定「全部」），动态来自当前结果的不同来源。</summary>
+    public ObservableCollection<SourceFilter> SourceFilters { get; } = new();
+
+    /// <summary>按所选来源过滤后的结果（绑定列表用）。</summary>
+    public ObservableCollection<UnifiedSearchResult> FilteredResults { get; } = new();
+
+    private void RebuildFilters()
+    {
+        var labels = _all
+            .Select(r => SourceLabel(r.Source))
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .ToList();
+
+        SourceFilters.Clear();
+        SourceFilters.Add(new SourceFilter { Label = "全部", IsActive = true });
+
+        foreach (var l in labels)
+            SourceFilters.Add(new SourceFilter { Label = l });
+
+        _selectedSource = "";
+        ApplyFilter();
+    }
+
+    [RelayCommand]
+    private void SelectSource(SourceFilter? f)
+    {
+        if (f == null) return;
+        foreach (var s in SourceFilters)
+            s.IsActive = ReferenceEquals(s, f);
+        _selectedSource = f.Label;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        FilteredResults.Clear();
+        foreach (var r in _all)
+        {
+            if (string.IsNullOrEmpty(_selectedSource) || _selectedSource == "全部")
+                FilteredResults.Add(r);
+            else if (string.Equals(SourceLabel(r.Source), _selectedSource, StringComparison.OrdinalIgnoreCase))
+                FilteredResults.Add(r);
+        }
+    }
+
+    /// <summary>把内部来源标识映射为筛选/展示名：iTunes → 苹果，其余原样（LRCLIB / Lyrico 源显示名）。</summary>
+    internal static string SourceLabel(string raw)
+        => string.Equals(raw, "iTunes", StringComparison.OrdinalIgnoreCase) ? "苹果" : (raw ?? "").Trim();
 
     /// <summary>Lyrico LrcLyrics → LrclibTrack（把时间轴行序列化成 LRC 字符串，复用结果展示/写入管线）。</summary>
     private static LrclibTrack? LyricoToLrclibTrack(string sourceName, LrcLyrics lyrics, string title, string? artist)
@@ -300,6 +355,15 @@ public partial class UnifiedSearchViewModel : ObservableObject
             IsBusy = false;
         }
     }
+}
+
+/// <summary>来源筛选 chip：Label = 显示名，IsActive = 是否选中。</summary>
+public partial class SourceFilter : ObservableObject
+{
+    public string Label { get; set; } = "";
+
+    [ObservableProperty]
+    private bool isActive;
 }
 
 /// <summary>统一搜索结果条目：歌词 + 封面合并。</summary>
