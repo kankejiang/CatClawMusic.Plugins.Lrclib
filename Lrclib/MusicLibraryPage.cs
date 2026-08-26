@@ -1,4 +1,4 @@
-using CatClawMusic.Core.Interfaces;
+﻿using CatClawMusic.Core.Interfaces;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Layouts;
@@ -939,7 +939,7 @@ public class MusicLibraryPage : ContentPage
         }
         if (e.CurrentSelection.FirstOrDefault() is not SongItem song) return;
         if (_songsView != null) _songsView.SelectedItem = null;
-        await PluginNav.PushAsync(new SongDetailPage(song));
+        await PluginNav.PushAsync(new EditMetadataPage(song));
     }
 
     private async void OnAlbumSelected(object? sender, SelectionChangedEventArgs e)

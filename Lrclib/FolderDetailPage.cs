@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CatClawMusic.Core.Interfaces;
 using CatClawMusic.Core.Models;
 
@@ -85,6 +85,6 @@ public class FolderDetailPage : ContentPage
     {
         if (e.CurrentSelection.FirstOrDefault() is not SongItem song) return;
         _list.SelectedItem = null;
-        await PluginNav.PushAsync(new SongDetailPage(song));
+        await PluginNav.PushAsync(new EditMetadataPage(song));
     }
 }

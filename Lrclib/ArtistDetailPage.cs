@@ -1,4 +1,4 @@
-using Microsoft.Maui.Controls;
+﻿using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 
 namespace CatClawMusic.Plugins.Lrclib;
@@ -111,6 +111,6 @@ public class ArtistDetailPage : ContentPage
     {
         if (e.CurrentSelection.FirstOrDefault() is not SongItem song) return;
         _list.SelectedItem = null;
-        await PluginNav.PushAsync(new SongDetailPage(song));
+        await PluginNav.PushAsync(new EditMetadataPage(song));
     }
 }

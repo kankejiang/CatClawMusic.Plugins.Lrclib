@@ -1,4 +1,4 @@
-using Microsoft.Maui.Controls;
+﻿using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 
 namespace CatClawMusic.Plugins.Lrclib;
@@ -51,10 +51,10 @@ public class LocalSearchPage : ContentPage
         switch (item)
         {
             case SongItem s:
-                await PluginNav.PushAsync(new SongDetailPage(s));
+                await PluginNav.PushAsync(new EditMetadataPage(s));
                 break;
             case LyricMatchItem m:
-                await PluginNav.PushAsync(new SongDetailPage(m.Song));
+                await PluginNav.PushAsync(new EditMetadataPage(m.Song));
                 break;
             case AlbumItem a:
                 await PluginNav.PushAsync(new AlbumDetailPage(a));
