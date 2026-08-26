@@ -272,12 +272,12 @@ public class UnifiedSearchPage : ContentPage
         };
 
         var tap = new TapGestureRecognizer();
-        tap.SetBinding(TapGestureRecognizer.CommandParameterProperty, new Binding("."));
         tap.Tapped += async (s, e) =>
         {
-            if (e.Parameter is not UnifiedSearchResult item) return;
+            var src = (s as TapGestureRecognizer)?.Parent as BindableObject;
+            if (src?.BindingContext is not UnifiedSearchResult item) return;
             try { await _vm.ApplyCommand.ExecuteAsync(item); }
-            catch { /* 避免异常中断手势 */ }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Search] apply failed: {ex.Message}"); }
         };
         card.GestureRecognizers.Add(tap);
 
