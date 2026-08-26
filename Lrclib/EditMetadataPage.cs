@@ -87,11 +87,7 @@ public class EditMetadataPage : ContentPage
 
     private async void OnSearchClicked(object? sender, EventArgs e)
     {
-        var action = await DisplayActionSheet("搜索补全", "取消", null, "搜索歌词", "搜索封面");
-        if (action == "搜索歌词")
-            await PluginNav.PushAsync(new SearchLyricsPage(_vm.Song));
-        else if (action == "搜索封面")
-            await PluginNav.PushAsync(new SearchCoverPage(_vm.Song));
+        await PluginNav.PushAsync(new UnifiedSearchPage(_vm.Song));
     }
 
     private async void OnConfirmClicked(object? sender, EventArgs e)
