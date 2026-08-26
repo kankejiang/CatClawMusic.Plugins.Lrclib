@@ -173,7 +173,7 @@ public static class LyricoLyricsConverter
                         {
                             Timestamp = Ms(startMs),
                             Text = text,
-                            WordTimestamps = parsed.Words.Count > 1 ? parsed.Words : null,
+                            WordTimestamps = parsed.Words.Count > 0 ? parsed.Words : null,
                             Role = Attr(p, "agent"),
                         });
                         AddIfText(translations, startMs, parsed.TranslationText);
@@ -200,7 +200,11 @@ public static class LyricoLyricsConverter
         }
     }
 
-    /// <summary>遍历 &lt;p&gt; 的直接子节点：带 begin 的 span 为词级数据；role span 归翻译/罗马音；纯文本与无时间 span 归原文。</summary>
+    /// <summary>
+    /// 遍历 &lt;p&gt; 的直接子节点（对齐 Lyrico parsePText/parseContentWords）：
+    /// role span 归翻译/罗马音/背景；带 begin 的 span 为词级数据（词文本排除嵌套 role 子孙）；
+    /// 无 begin 的 span 递归收集带 begin 的子孙为词；纯文本归原文。
+    /// </summary>
     private static ParsedP ParsePContent(XElement p, long startMs, long endMs)
     {
         var words = new List<WordTimestamp>();
@@ -232,7 +236,7 @@ public static class LyricoLyricsConverter
             var begin = ParseTtmlTime(Attr(el, "begin"));
             if (begin != null)
             {
-                var wText = el.Value.Trim();
+                var wText = VisibleText(el).Trim();
                 if (wText.Length == 0) continue;
                 var wEnd = (long)(ParseTtmlTime(Attr(el, "end")) ?? endMs);
                 words.Add(new WordTimestamp
@@ -244,11 +248,81 @@ public static class LyricoLyricsConverter
             }
             else
             {
-                original.Append(el.Value);
+                // 无 begin 容器 span：子孙里的带时间 span 逐个成词（Apple Music 嵌套结构）
+                var nested = CollectWords(el, startMs, endMs);
+                if (nested.Count > 0)
+                    words.AddRange(nested);
+                else
+                    original.Append(el.Value);
             }
         }
 
         return new ParsedP(words, original.ToString(), translation.ToString(), roma.ToString());
+    }
+
+    /// <summary>递归收集容器内带 begin 的 span 为词（对齐 Lyrico parseContentWords）；
+    /// 词间裸文本按位置保留为无时间词（兜底用前词结束/容器起始），保证词序完整。</summary>
+    private static List<WordTimestamp> CollectWords(XElement container, long fallbackStart, long fallbackEnd)
+    {
+        var result = new List<WordTimestamp>();
+        var lastEnd = (long?)null;
+        foreach (var node in container.Nodes())
+        {
+            if (node is XText t)
+            {
+                var v = t.Value;
+                if (v.Trim().Length == 0) continue;
+                result.Add(new WordTimestamp
+                {
+                    Word = v.Trim(),
+                    Start = Ms(lastEnd ?? fallbackStart),
+                    Duration = Ms(300),
+                });
+                continue;
+            }
+            if (node is not XElement el || el.Name.LocalName != "span") continue;
+            if (IsRole(el)) continue;
+
+            var begin = ParseTtmlTime(Attr(el, "begin"));
+            if (begin == null)
+            {
+                result.AddRange(CollectWords(el, fallbackStart, fallbackEnd));
+                continue;
+            }
+            var wText = VisibleText(el).Trim();
+            if (wText.Length == 0) continue;
+            var wEnd = (long)(ParseTtmlTime(Attr(el, "end")) ?? (lastEnd ?? fallbackEnd));
+            result.Add(new WordTimestamp
+            {
+                Word = wText,
+                Start = Ms(begin.Value),
+                Duration = Ms(Math.Max(50, wEnd - begin.Value)),
+            });
+            lastEnd = wEnd;
+        }
+        return result;
+    }
+
+    /// <summary>取元素可见文本：递归文本节点，跳过 ttm:role 子孙（翻译/罗马音/背景不入原文）。</summary>
+    private static string VisibleText(XElement el)
+    {
+        var sb = new System.Text.StringBuilder();
+        void Visit(XElement e)
+        {
+            foreach (var n in e.Nodes())
+            {
+                if (n is XText t) sb.Append(t.Value);
+                else if (n is XElement c && !IsRole(c)) Visit(c);
+            }
+        }
+        Visit(el);
+        return sb.ToString();
+    }
+
+    private static bool IsRole(XElement el)
+    {
+        var r = Role(el);
+        return r is "x-translation" or "x-romanization" or "x-bg";
     }
 
     private sealed record ParsedP(
