@@ -17,17 +17,12 @@ namespace CatClawMusic.Plugins.Lrclib;
 /// 也可在该页管理内嵌的 Lyrico 多源歌词插件（导入 .zip / 卸载 / 查看加载状态）。
 /// </para>
 /// <para>
-/// 同时实现 <see cref="IExtendedLyricsPlugin"/>：向宿主声明扩展歌词（译文/罗马音）显示能力。
-/// 本插件加载并启用后，宿主歌词设置弹窗才会显示「扩展歌词」分区（显示歌词译文/罗马音开关），
-/// 译文/罗马音参与歌词渲染；插件未加载时宿主不显示该功能（扩展歌词能力插件自治）。
-/// </para>
-/// <para>
 /// 数据源：https://lrclib.net（开源、免费、无 API Key），按 歌名/艺人/时长 匹配同步歌词。
 /// LRCLIB 未命中时，回退到内嵌的 Lyrico 多源编排（netease/qq/kugou/soda/apple 的 JS 源插件，
 /// 由用户导入到 AppDataDirectory/Plugin/LyricoSources/）。
 /// </para>
 /// </summary>
-public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin, IExtendedLyricsPlugin
+public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
 {
     private readonly LrclibApiClient _client = new();
     private readonly OverrideStore _overrideStore = new();
@@ -45,10 +40,10 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin,
 
     public string PluginId => "lrclib";
     public string Name => "LRCLIB 在线歌词";
-    public string Version => "1.3.0";
+    public string Version => "1.2.0";
     public string Author => "CatClawMusic";
-    public string Description => "LRCLIB 开放歌词库 + Lyrico 多源歌词兜底；提供扩展歌词能力（译文/罗马音显示）；音乐库浏览/标签编辑/批量操作（匹配·编辑·重命名·响度·歌词格式化·标签转移）/本地搜索";
-    public List<string> Capabilities => new() { "lyrics", "extended-lyrics" };
+    public string Description => "LRCLIB 开放歌词库 + Lyrico 多源歌词兜底；音乐库浏览/标签编辑/批量操作（匹配·编辑·重命名·响度·歌词格式化·标签转移）/本地搜索";
+    public List<string> Capabilities => new() { "lyrics" };
 
     public bool IsAvailable => true;
 
@@ -59,11 +54,6 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin,
 
     /// <summary>发现页入口图标（Emoji）</summary>
     public string EntryIcon => "🎵";
-
-    // ── IExtendedLyricsPlugin：扩展歌词能力声明 ──
-
-    /// <summary>宿主歌词设置弹窗「扩展歌词」分区标题</summary>
-    public string ExtensionTitle => "扩展歌词";
 
     /// <summary>
     /// 创建入口页：宿主音乐库服务可用时以 <see cref="MusicLibraryPage"/> 为入口
