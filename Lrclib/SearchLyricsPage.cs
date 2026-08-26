@@ -11,6 +11,10 @@ namespace CatClawMusic.Plugins.Lrclib;
 public class SearchLyricsPage : ContentPage
 {
     private readonly SearchLyricsViewModel _vm;
+    private bool _searchExpanded;
+    private View? _searchBarRow;     // 折叠态：关键字 + 编辑按钮
+    private View? _searchPanel;     // 展开态：输入框 + 搜索按钮
+    private VerticalStackLayout? _searchContainer;
 
     public SearchLyricsPage(SongItem song)
     {
@@ -20,7 +24,11 @@ public class SearchLyricsPage : ContentPage
         Title = "搜索歌词";
         BackgroundColor = GetResourceColor("WindowBackgroundColor", "#1A1838");
 
-        var searchPanel = BuildSearchPanel();
+        _searchBarRow = BuildCollapsedBar();
+        _searchPanel = BuildExpandedPanel();
+        _searchPanel.IsVisible = false;  // 默认折叠
+        _searchContainer = new VerticalStackLayout { Spacing = 0, Children = { _searchBarRow, _searchPanel } };
+
         var list = BuildCandidatesList();
 
         var content = new Grid
@@ -31,7 +39,7 @@ public class SearchLyricsPage : ContentPage
                 new RowDefinition(GridLength.Star),
             },
         };
-        content.Add(searchPanel, 0, 0);
+        content.Add(_searchContainer, 0, 0);
         content.Add(list, 0, 1);
 
         // 底部歌词预览面板（覆盖全页）：跨满两行，否则被约束在 row0 搜索卡区域内
@@ -55,8 +63,56 @@ public class SearchLyricsPage : ContentPage
         }
     }
 
-    // ── 顶部搜索面板 ──
-    private View BuildSearchPanel()
+    // ── 顶部搜索栏（折叠态：仅显示关键字 + 编辑按钮，节省空间）──
+    private View BuildCollapsedBar()
+    {
+        var keywordLabel = NewLabel(14, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", tail: true);
+        keywordLabel.SetBinding(Label.TextProperty,
+            new MultiBinding
+            {
+                Bindings =
+                {
+                    new Binding(nameof(SearchLyricsViewModel.SearchTitle)),
+                    new Binding(nameof(SearchLyricsViewModel.SearchArtist)),
+                },
+                Converter = new CollapsedKeywordConverter(),
+            });
+        keywordLabel.VerticalOptions = LayoutOptions.Center;
+
+        var editBtn = new Button
+        {
+            Text = "修改",
+            FontSize = 13,
+            TextColor = Text("TextPrimaryColor", "#F7F8FF"),
+            BackgroundColor = Colors.Transparent,
+            HeightRequest = 32,
+            Padding = new Thickness(10, 0),
+            HorizontalOptions = LayoutOptions.End,
+        };
+        editBtn.Clicked += (_, _) => ToggleSearchPanel();
+
+        var row = new Grid
+        {
+            Padding = new Thickness(16, 8, 12, 6),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+            },
+        };
+        row.Add(keywordLabel, 0, 0);
+        row.Add(editBtn, 1, 0);
+        return row;
+    }
+
+    private void ToggleSearchPanel()
+    {
+        _searchExpanded = !_searchExpanded;
+        if (_searchPanel != null) _searchPanel.IsVisible = _searchExpanded;
+    }
+
+    // ── 顶部搜索面板（展开态：歌名/艺人输入框 + 搜索按钮）──
+    private View BuildExpandedPanel()
     {
         var titleEntry = new Entry
         {
@@ -456,4 +512,20 @@ public class SearchLyricsPage : ContentPage
         => Application.Current?.Resources.TryGetValue(key, out var v) == true && v is Color c
             ? c
             : Color.FromArgb(fallback);
+}
+
+/// <summary>歌名 + 艺人 → 折叠栏显示的关键字文本（如「Closer To Me - Megan & Liz」）。</summary>
+internal sealed class CollapsedKeywordConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+    {
+        var title = values.Length > 0 ? values[0]?.ToString()?.Trim() : "";
+        var artist = values.Length > 1 ? values[1]?.ToString()?.Trim() : "";
+        if (string.IsNullOrEmpty(title)) return "搜索歌词";
+        if (string.IsNullOrEmpty(artist)) return title;
+        return $"{title} - {artist}";
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object? parameter, System.Globalization.CultureInfo culture)
+        => throw new NotSupportedException();
 }

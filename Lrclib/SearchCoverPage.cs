@@ -11,6 +11,10 @@ namespace CatClawMusic.Plugins.Lrclib;
 public class SearchCoverPage : ContentPage
 {
     private readonly SearchCoverViewModel _vm;
+    private bool _searchExpanded;
+    private View? _searchBarRow;
+    private View? _searchPanel;
+    private VerticalStackLayout? _searchContainer;
 
     public SearchCoverPage(SongItem song)
     {
@@ -20,7 +24,11 @@ public class SearchCoverPage : ContentPage
         Title = "搜索封面";
         BackgroundColor = GetResourceColor("WindowBackgroundColor", "#1A1838");
 
-        var searchPanel = BuildSearchPanel();
+        _searchBarRow = BuildCollapsedBar();
+        _searchPanel = BuildExpandedPanel();
+        _searchPanel.IsVisible = false;
+        _searchContainer = new VerticalStackLayout { Spacing = 0, Children = { _searchBarRow, _searchPanel } };
+
         var list = BuildCandidatesList();
 
         var content = new Grid
@@ -31,7 +39,7 @@ public class SearchCoverPage : ContentPage
                 new RowDefinition(GridLength.Star),
             },
         };
-        content.Add(searchPanel, 0, 0);
+        content.Add(_searchContainer, 0, 0);
         content.Add(list, 0, 1);
 
         // 底部封面预览面板（覆盖全页）：跨满两行，否则被约束在 row0 搜索卡区域内
@@ -55,8 +63,54 @@ public class SearchCoverPage : ContentPage
         }
     }
 
-    // ── 顶部搜索面板 ──
-    private View BuildSearchPanel()
+    // ── 顶部搜索栏（折叠态）──
+    private View BuildCollapsedBar()
+    {
+        var keywordLabel = NewLabel(14, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", tail: true);
+        keywordLabel.SetBinding(Label.TextProperty,
+            new MultiBinding
+            {
+                Bindings =
+                {
+                    new Binding(nameof(SearchCoverViewModel.SearchTitle)),
+                    new Binding(nameof(SearchCoverViewModel.SearchArtist)),
+                },
+                Converter = new CollapsedKeywordConverter(),
+            });
+        keywordLabel.VerticalOptions = LayoutOptions.Center;
+
+        var editBtn = new Button
+        {
+            Text = "修改",
+            FontSize = 13,
+            TextColor = Text("TextPrimaryColor", "#F7F8FF"),
+            BackgroundColor = Colors.Transparent,
+            HeightRequest = 32,
+            Padding = new Thickness(10, 0),
+            HorizontalOptions = LayoutOptions.End,
+        };
+        editBtn.Clicked += (_, _) =>
+        {
+            _searchExpanded = !_searchExpanded;
+            if (_searchPanel != null) _searchPanel.IsVisible = _searchExpanded;
+        };
+
+        var row = new Grid
+        {
+            Padding = new Thickness(16, 8, 12, 6),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+            },
+        };
+        row.Add(keywordLabel, 0, 0);
+        row.Add(editBtn, 1, 0);
+        return row;
+    }
+
+    // ── 顶部搜索面板（展开态）──
+    private View BuildExpandedPanel()
     {
         var titleEntry = new Entry
         {
