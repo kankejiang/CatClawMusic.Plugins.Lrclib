@@ -127,24 +127,57 @@ public sealed class UnifiedSearchPreviewPage : ContentPage
         statusLabel.HorizontalOptions = LayoutOptions.Center;
         statusLabel.SetBinding(Label.TextProperty, nameof(UnifiedSearchViewModel.StatusText));
 
-        var content = new VerticalStackLayout
+        // 上部信息区（固定）：标题 / 副标题 / 徽标 / 封面
+        var infoStack = new VerticalStackLayout
         {
-            Spacing = 12,
-            Padding = new Thickness(20, 16, 20, 24),
+            Spacing = 8,
+            Padding = new Thickness(20, 16, 20, 4),
             Children =
             {
                 titleLabel,
                 subLabel,
                 badge,
                 coverBox,
-                lyricsHeader,
-                lyricsScroll,
-                statusLabel,
-                applyButton,
             },
         };
 
-        return new Grid { Children = { content } };
+        // 中部歌词区（可滚动，填满剩余空间）：歌词再多也不挤占底部按钮
+        var lyricsBox = new VerticalStackLayout
+        {
+            Spacing = 6,
+            Margin = new Thickness(20, 4, 20, 0),
+            Children = { lyricsHeader, lyricsScroll },
+        };
+
+        // 底部操作区（固定）：状态 + 写入按钮
+        var applyBox = new Grid
+        {
+            Padding = new Thickness(20, 4, 20, 16),
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+            },
+        };
+        applyBox.Add(applyButton, 0, 0);
+        statusLabel.Margin = new Thickness(0, 6, 0, 0);
+        applyBox.Add(statusLabel, 0, 1);
+
+        // 三行网格：顶部信息 / 滚动词词 / 底部固定按钮
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Star),
+                new RowDefinition(GridLength.Auto),
+            },
+        };
+        grid.Add(infoStack, 0, 0);
+        grid.Add(lyricsBox, 0, 1);
+        grid.Add(applyBox, 0, 2);
+
+        return grid;
     }
 
     // ── 小工具 ──
