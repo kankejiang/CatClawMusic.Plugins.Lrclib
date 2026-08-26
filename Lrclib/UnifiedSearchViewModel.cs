@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text;
+using System.Text.RegularExpressions;
 using CatClawMusic.Core.Interfaces;
 using CatClawMusic.Core.Models;
 using CatClawMusic.Plugins.Lrclib.Lyrico;
@@ -35,6 +36,20 @@ public partial class UnifiedSearchViewModel : ObservableObject
     [ObservableProperty] private bool applyLyrics = true;
     [ObservableProperty] private bool applyCover = true;
     [ObservableProperty] private bool applyMetadata = true;
+
+    /// <summary>当前选中的歌词模式（预览与写入共用）。</summary>
+    [ObservableProperty]
+    private LyricMode selectedMode = LyricMode.Plain;
+
+    partial void OnSelectedModeChanged(LyricMode value)
+        => OnPropertyChanged(nameof(SelectedLyricsPreview));
+
+    /// <summary>按当前模式渲染选中结果的歌词文本（预览用）。</summary>
+    public string SelectedLyricsPreview
+        => Selected != null ? LyricModeEncoder.Encode(Selected.StructuredLyrics, SelectedMode) : "（未选中）";
+
+    partial void OnSelectedChanged(UnifiedSearchResult? value)
+        => OnPropertyChanged(nameof(SelectedLyricsPreview));
 
     /// <summary>合并后的搜索结果列表</summary>
     public ObservableCollection<UnifiedSearchResult> Results { get; } = new();
@@ -79,35 +94,38 @@ public partial class UnifiedSearchViewModel : ObservableObject
             catch { return null; }
         });
 
-        var lyricoTask = _lyricoHub != null ? Task.Run<List<(LrclibTrack track, string source)>>(async () =>
+        var lyricoTask = _lyricoHub != null ? Task.Run<List<(LrclibTrack track, string source, LrcLyrics structured)>>(async () =>
         {
             try
             {
                 var duration = Song.Song.Duration > 1000 ? Song.Song.Duration / 1000.0 : Song.Song.Duration;
                 var hits = await _lyricoHub.SearchAllSourcesAsync(title, artist, null, duration);
-                var result = new List<(LrclibTrack, string)>();
+                var result = new List<(LrclibTrack, string, LrcLyrics)>();
                 foreach (var entry in hits)
                 {
                     var t = LyricoToLrclibTrack(entry.Name, entry.Lyrics, title, artist);
-                    if (t != null) result.Add((t, entry.Name));
+                    if (t != null) result.Add((t, entry.Name, entry.Lyrics));
                 }
                 return result;
             }
-            catch { return new List<(LrclibTrack, string)>(); }
-        }) : Task.FromResult(new List<(LrclibTrack, string)>());
+            catch { return new List<(LrclibTrack, string, LrcLyrics)>(); }
+        }) : Task.FromResult(new List<(LrclibTrack, string, LrcLyrics)>());
 
         await Task.WhenAll(lrclibTask, itunesTask, lyricoTask);
 
         var lrclibResults = lrclibTask.Result ?? new List<LrclibTrack>();
         var itunesResults = itunesTask.Result ?? new List<ItunesTrack>();
-        var lyricoResults = lyricoTask.Result ?? new List<(LrclibTrack track, string source)>();
+        var lyricoResults = lyricoTask.Result ?? new List<(LrclibTrack track, string source, LrcLyrics structured)>();
 
         // 合并歌词候选
-        var allLyrics = new List<(LrclibTrack track, string source)>();
+        var allLyrics = new List<(LrclibTrack track, string source, LrcLyrics? structured)>();
         foreach (var t in lrclibResults.Take(30))
-            allLyrics.Add((t, "LRCLIB"));
-        foreach (var (t, src) in lyricoResults.Take(30))
-            allLyrics.Add((t, src));
+        {
+            var structured = LrcFromSyncedLyrics(t.SyncedLyrics);
+            allLyrics.Add((t, "LRCLIB", structured));
+        }
+        foreach (var (t, src, structured) in lyricoResults.Take(30))
+            allLyrics.Add((t, src, structured));
 
         // 构建封面索引（按 歌名+艺人 模糊匹配）
         var coverLookup = new Dictionary<string, ItunesTrack>(StringComparer.OrdinalIgnoreCase);
@@ -121,7 +139,7 @@ public partial class UnifiedSearchViewModel : ObservableObject
         var merged = new List<UnifiedSearchResult>();
         var usedCovers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var (track, source) in allLyrics)
+        foreach (var (track, source, structured) in allLyrics)
         {
             var key = $"{track.TrackName?.Trim()}|{track.ArtistName?.Trim()}";
             ItunesTrack? cover = null;
@@ -154,6 +172,7 @@ public partial class UnifiedSearchViewModel : ObservableObject
                 HasCover = cover != null && !string.IsNullOrWhiteSpace(cover.ArtworkUrl100),
                 LyricsTrack = track,
                 CoverTrack = cover,
+                StructuredLyrics = structured,
             });
         }
 
@@ -247,6 +266,94 @@ public partial class UnifiedSearchViewModel : ObservableObject
     internal static string SourceLabel(string raw)
         => string.Equals(raw, "iTunes", StringComparison.OrdinalIgnoreCase) ? "苹果" : (raw ?? "").Trim();
 
+    /// <summary>把 SyncedLyrics（标准/增强 LRC）解析成结构化 LrcLyrics；无法解析返回 null。</summary>
+    private static LrcLyrics? LrcFromSyncedLyrics(string? synced)
+    {
+        if (string.IsNullOrWhiteSpace(synced)) return null;
+        try
+        {
+            var lines = new List<LrcLyricLine>();
+            foreach (var rawLine in synced.Split('\n'))
+            {
+                var line = rawLine.Trim();
+                if (line.Length == 0) continue;
+                var match = Regex.Match(line, @"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]");
+                if (!match.Success) continue;
+                var start = (int)(int.Parse(match.Groups[1].Value) * 60_000
+                    + int.Parse(match.Groups[2].Value) * 1000 + ParseFraction(match.Groups[3].Value));
+                var content = line.Substring(line.IndexOf(']') + 1);
+
+                // 词级尖括号 <mm:ss.xxx>
+                var words = new List<WordTimestamp>();
+                var wordRegex = new System.Text.RegularExpressions.Regex(@"<(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?>");
+                var sb = new StringBuilder();
+                var pos = 0;
+                var hasWords = false;
+                foreach (System.Text.RegularExpressions.Match w in wordRegex.Matches(content))
+                {
+                    hasWords = true;
+                    var prefix = content.Substring(pos, w.Index - pos);
+                    sb.Append(prefix);
+                    if (sb.Length > 0)
+                    {
+                        var wStart = (int)(int.Parse(w.Groups[1].Value) * 60_000
+                            + int.Parse(w.Groups[2].Value) * 1000 + ParseFraction(w.Groups[3].Value));
+                        words.Add(new WordTimestamp { Word = prefix, Start = TimeSpan.FromMilliseconds(wStart) });
+                    }
+                    pos = w.Index + w.Length;
+                }
+                var tail = content.Substring(pos);
+                sb.Append(tail);
+                var text = sb.ToString().Replace("<", "").Replace(">", "").Trim();
+                if (string.IsNullOrEmpty(text)) continue;
+
+                var wts = hasWords && words.Count > 1
+                    ? AssignWordDurations(words, text, start)
+                    : null;
+                lines.Add(new LrcLyricLine
+                {
+                    Timestamp = TimeSpan.FromMilliseconds(start),
+                    Text = text,
+                    WordTimestamps = wts,
+                });
+            }
+            if (lines.Count == 0) return null;
+            lines.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+            return new LrcLyrics { Lines = lines };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static List<WordTimestamp> AssignWordDurations(List<WordTimestamp> words, string lineText, int lineStartMs)
+    {
+        // 词间时长等分，最后一词到行文本结束。
+        var result = new List<WordTimestamp>();
+        for (int i = 0; i < words.Count; i++)
+        {
+            var startMs = (long)words[i].Start.TotalMilliseconds;
+            var endMs = i + 1 < words.Count
+                ? (long)words[i + 1].Start.TotalMilliseconds
+                : startMs + 3000;
+            result.Add(new WordTimestamp
+            {
+                Word = words[i].Word,
+                Start = TimeSpan.FromMilliseconds(startMs),
+                Duration = TimeSpan.FromMilliseconds(Math.Max(50, endMs - startMs)),
+            });
+        }
+        _ = lineText; _ = lineStartMs;
+        return result;
+    }
+
+    private static int ParseFraction(string? frac)
+    {
+        if (string.IsNullOrEmpty(frac)) return 0;
+        return frac.Length == 1 ? int.Parse(frac) * 100 : (frac.Length == 2 ? int.Parse(frac) * 10 : int.Parse(frac));
+    }
+
     /// <summary>Lyrico LrcLyrics → LrclibTrack（把时间轴行序列化成 LRC 字符串，复用结果展示/写入管线）。</summary>
     private static LrclibTrack? LyricoToLrclibTrack(string sourceName, LrcLyrics lyrics, string title, string? artist)
     {
@@ -308,10 +415,14 @@ public partial class UnifiedSearchViewModel : ObservableObject
 
             if (writeLyrics && item.LyricsTrack != null)
             {
-                lyrics = !string.IsNullOrWhiteSpace(item.LyricsTrack.SyncedLyrics)
-                    ? item.LyricsTrack.SyncedLyrics
-                    : item.LyricsTrack.PlainLyrics;
-                if (!string.IsNullOrWhiteSpace(lyrics)) parts.Add("歌词");
+                // 优先按所选歌词模式从结构化歌词编码；无结构化才回退原字符串。
+                lyrics = item.StructuredLyrics != null
+                    ? LyricModeEncoder.Encode(item.StructuredLyrics, SelectedMode)
+                    : (!string.IsNullOrWhiteSpace(item.LyricsTrack.SyncedLyrics)
+                        ? item.LyricsTrack.SyncedLyrics
+                        : item.LyricsTrack.PlainLyrics);
+                var part = SelectedMode == LyricMode.Plain ? "歌词" : $"{LyricModeEncoder.ModeName(SelectedMode)}";
+                if (!string.IsNullOrWhiteSpace(lyrics)) parts.Add(part);
             }
 
             if (writeCover)
@@ -401,6 +512,9 @@ public class UnifiedSearchResult : ObservableObject
 
     /// <summary>iTunes 封面条目（可能为 null，纯歌词结果）</summary>
     public ItunesTrack? CoverTrack { get; set; }
+
+    /// <summary>结构化歌词（含词级时间戳），用于四种歌词模式预览/写入。可能为 null。</summary>
+    public LrcLyrics? StructuredLyrics { get; set; }
 
     public string DisplayTitle => $"{Title} - {Artist}";
 

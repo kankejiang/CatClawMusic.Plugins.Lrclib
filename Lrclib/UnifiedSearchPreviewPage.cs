@@ -378,25 +378,115 @@ public sealed class UnifiedSearchPreviewPage : ContentPage
         }
     }
 
-    // ── Tab 1：歌词 ──
+    // ── Tab 1：歌词（模式切换 chips + 预览） ──
     private View BuildLyricsTab()
     {
+        // 模式选择 chips：逐行 / 逐字 / 增强 / TTML
+        var keys = new[]
+        {
+            LayricModeKey(LyricMode.Plain),
+            LayricModeKey(LyricMode.Verbatim),
+            LayricModeKey(LyricMode.Enhanced),
+            LayricModeKey(LyricMode.TTML),
+        };
+        var modes = new[] { LyricMode.Plain, LyricMode.Verbatim, LyricMode.Enhanced, LyricMode.TTML };
+
+        var chipHost = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+            },
+            Padding = new Thickness(12, 8, 12, 4),
+        };
+        var chipButtons = new Button[4];
+        for (int i = 0; i < 4; i++)
+        {
+            var idx = i;
+            var btn = new Button
+            {
+                Text = keys[i],
+                FontSize = 11,
+                HeightRequest = 30,
+                CornerRadius = 15,
+                Padding = new Thickness(10, 0),
+                HorizontalOptions = LayoutOptions.Fill,
+                BorderWidth = 0,
+            };
+            var selected = _vm.SelectedMode == modes[i];
+            btn.TextColor = selected
+                ? Colors.White
+                : GetResourceColor("TextSecondaryColor", "#8E93B8");
+            btn.BackgroundColor = selected
+                ? GetResourceColor("PrimaryColor", "#8C7BFF")
+                : Color.FromArgb("#1AFFFFFF");
+            btn.SetBinding(Button.IsEnabledProperty,
+                new Binding(nameof(UnifiedSearchViewModel.IsBusy)) { Converter = new InverseBooleanConverter(), Source = _vm });
+
+            var capturedMode = modes[i];
+            btn.Clicked += async (_, _) =>
+            {
+                _vm.SelectedMode = capturedMode;
+                RefreshChipVisual(i, chipButtons);
+            };
+            chipButtons[i] = btn;
+            chipHost.Add(btn, i, 0);
+        }
+
+        // 歌词预览（按模式）
         var label = new Label
         {
-            FontSize = 14,
-            LineHeight = 1.8,
-            HorizontalTextAlignment = TextAlignment.Center,
+            FontSize = 13,
+            LineHeight = 1.7,
+            HorizontalTextAlignment = TextAlignment.Start,
+            FontFamily = "Consolas, monospace",
         };
         label.SetDynamicResource(Label.TextColorProperty, "TextSecondaryColor");
-        label.SetBinding(Label.TextProperty,
-            new Binding($"{nameof(UnifiedSearchViewModel.Selected)}.{nameof(UnifiedSearchResult.PreviewLyrics)}"));
+        label.SetBinding(Label.TextProperty, nameof(UnifiedSearchViewModel.SelectedLyricsPreview));
 
-        return new ScrollView
+        return new Grid
         {
-            Padding = new Thickness(20, 16, 20, 20),
-            Content = label,
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Star),
+            },
+            Children =
+            {
+                chipHost,
+                new ScrollView { Content = label, Padding = new Thickness(16, 8, 16, 20) },
+            },
         };
     }
+
+    /// <summary>刷新模式 chips 高亮：选中项主题色，其余浅色。</summary>
+    private void RefreshChipVisual(int activeIndex, Button[] all)
+    {
+        if (all.Length == 0) return;
+        for (int i = 0; i < all.Length; i++)
+        {
+            var isActive = i == activeIndex;
+            all[i].TextColor = isActive
+                ? Colors.White
+                : GetResourceColor("TextSecondaryColor", "#8E93B8");
+            all[i].BackgroundColor = isActive
+                ? GetResourceColor("PrimaryColor", "#8C7BFF")
+                : Color.FromArgb("#1AFFFFFF");
+            all[i].FontAttributes = isActive ? FontAttributes.Bold : FontAttributes.None;
+        }
+    }
+
+    private static string LayricModeKey(LyricMode mode) => mode switch
+    {
+        LyricMode.Plain => "逐行",
+        LyricMode.Verbatim => "逐字",
+        LyricMode.Enhanced => "增强逐字",
+        LyricMode.TTML => "TTML",
+        _ => "逐行",
+    };
 
     // ── Tab 2：封面 ──
     private View BuildCoverTab()
