@@ -31,6 +31,11 @@ public partial class UnifiedSearchViewModel : ObservableObject
     [ObservableProperty] private bool showPreview;
     [ObservableProperty] private UnifiedSearchResult? selected;
 
+    /// <summary>写入开关：默认全选。分别控制是否写入歌词 / 封面 / 元数据（歌名艺人专辑）。</summary>
+    [ObservableProperty] private bool applyLyrics = true;
+    [ObservableProperty] private bool applyCover = true;
+    [ObservableProperty] private bool applyMetadata = true;
+
     /// <summary>合并后的搜索结果列表</summary>
     public ObservableCollection<UnifiedSearchResult> Results { get; } = new();
 
@@ -277,24 +282,25 @@ public partial class UnifiedSearchViewModel : ObservableObject
     [RelayCommand]
     private void ClosePreview() => ShowPreview = false;
 
-    /// <summary>写入选中结果的歌词 + 封面到文件。</summary>
+    /// <summary>按勾选写入选中结果的元数据 / 歌词 / 封面到文件。</summary>
     [RelayCommand]
     private async Task ApplyAsync()
     {
         var item = Selected;
         if (item == null || _audio == null) return;
 
-        var writeLyrics = item.HasLyrics && item.LyricsTrack != null;
-        var writeCover = item.HasCover && !string.IsNullOrWhiteSpace(item.HighResCoverUrl);
+        var writeLyrics = ApplyLyrics && item.HasLyrics && item.LyricsTrack != null;
+        var writeCover = ApplyCover && item.HasCover && !string.IsNullOrWhiteSpace(item.HighResCoverUrl);
+        var writeMetadata = ApplyMetadata;
 
-        if (!writeLyrics && !writeCover)
+        if (!writeLyrics && !writeCover && !writeMetadata)
         {
-            StatusText = "该结果无可写入内容";
+            StatusText = "请至少勾选一项要写入的内容";
             return;
         }
 
         IsBusy = true;
-        var okCount = 0;
+        var parts = new List<string>();
         try
         {
             string? lyrics = null;
@@ -305,7 +311,7 @@ public partial class UnifiedSearchViewModel : ObservableObject
                 lyrics = !string.IsNullOrWhiteSpace(item.LyricsTrack.SyncedLyrics)
                     ? item.LyricsTrack.SyncedLyrics
                     : item.LyricsTrack.PlainLyrics;
-                if (!string.IsNullOrWhiteSpace(lyrics)) okCount++;
+                if (!string.IsNullOrWhiteSpace(lyrics)) parts.Add("歌词");
             }
 
             if (writeCover)
@@ -317,23 +323,33 @@ public partial class UnifiedSearchViewModel : ObservableObject
                     if (bytes.Length > 0)
                     {
                         coverBytes = bytes;
-                        okCount++;
+                        parts.Add("封面");
                     }
                 }
-                catch { /* 封面下载失败不阻塞歌词写入 */ }
+                catch { /* 封面下载失败不阻塞其它写入 */ }
             }
 
-            if (okCount > 0)
+            // 元数据：用搜索结果的歌名/艺人/专辑
+            if (writeMetadata) parts.Add("元数据");
+
+            if (parts.Count > 0)
             {
                 var edit = new CatClawMusic.Core.Models.AudioTagEdit
                 {
                     Lyrics = lyrics,
                     Cover = coverBytes,
                 };
+                if (writeMetadata)
+                {
+                    if (!string.IsNullOrWhiteSpace(item.Title)) edit.Title = item.Title;
+                    if (!string.IsNullOrWhiteSpace(item.Artist)) edit.Artist = item.Artist;
+                    if (!string.IsNullOrWhiteSpace(item.Album)) edit.Album = item.Album;
+                }
+
                 var ok = await _audio.WriteTagsAsync(Song.FilePath, edit);
                 if (ok)
                 {
-                    StatusText = $"已写入 {okCount} 项（{(writeLyrics ? "歌词" : "")}{(writeLyrics && writeCover ? " + " : "")}{(writeCover ? "封面" : "")}）";
+                    StatusText = $"已写入：{string.Join(" + ", parts)}";
                     Applied?.Invoke(this, EventArgs.Empty);
                 }
                 else

@@ -202,6 +202,54 @@ public sealed class UnifiedSearchPreviewPage : ContentPage
         statusLabel.SetDynamicResource(Label.TextColorProperty, "TextSecondaryColor");
         statusLabel.SetBinding(Label.TextProperty, nameof(UnifiedSearchViewModel.StatusText));
 
+        // 写入勾选：元数据 / 歌词 / 封面
+        var checkboxRow = new Grid
+        {
+            ColumnSpacing = 4,
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
+            },
+        };
+
+        void AddCheckbox(string label, string valueProp, int col)
+        {
+            var cb = new CheckBox
+            {
+                VerticalOptions = LayoutOptions.Center,
+                Scale = 0.8,
+                Color = GetResourceColor("PrimaryColor", "#8C7BFF"),
+                IsChecked = col switch
+                {
+                    0 => _vm.ApplyMetadata,
+                    2 => _vm.ApplyLyrics,
+                    _ => _vm.ApplyCover,
+                },
+            };
+            cb.SetBinding(CheckBox.IsCheckedProperty,
+                new Binding(valueProp, source: _vm));
+
+            var lb = new Label
+            {
+                Text = label,
+                FontSize = 12,
+                VerticalOptions = LayoutOptions.Center,
+                TextColor = GetResourceColor("TextSecondaryColor", "#C2C6E4"),
+            };
+
+            checkboxRow.Add(cb, col, 0);
+            checkboxRow.Add(lb, col + 1, 0);
+        }
+
+        AddCheckbox("元数据", nameof(UnifiedSearchViewModel.ApplyMetadata), 0);
+        AddCheckbox("歌词", nameof(UnifiedSearchViewModel.ApplyLyrics), 2);
+        AddCheckbox("封面", nameof(UnifiedSearchViewModel.ApplyCover), 4);
+
         var stack = new VerticalStackLayout
         {
             Spacing = 8,
@@ -212,6 +260,7 @@ public sealed class UnifiedSearchPreviewPage : ContentPage
                 title,
                 subtitle,
                 badgeStack,
+                checkboxRow,
                 statusLabel,
             },
         };
