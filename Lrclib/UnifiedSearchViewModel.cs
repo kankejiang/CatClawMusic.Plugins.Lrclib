@@ -1,6 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Text;
-using System.Text.RegularExpressions;
 using CatClawMusic.Core.Interfaces;
 using CatClawMusic.Core.Models;
 using CatClawMusic.Plugins.Lrclib.Lyrico;
@@ -266,114 +264,23 @@ public partial class UnifiedSearchViewModel : ObservableObject
     internal static string SourceLabel(string raw)
         => string.Equals(raw, "iTunes", StringComparison.OrdinalIgnoreCase) ? "苹果" : (raw ?? "").Trim();
 
-    /// <summary>把 SyncedLyrics（标准/增强 LRC）解析成结构化 LrcLyrics；无法解析返回 null。</summary>
+    /// <summary>把 SyncedLyrics（标准/增强/逐字 LRC，含同时间戳多语言行）解析成结构化 LrcLyrics；无法解析返回 null。</summary>
     private static LrcLyrics? LrcFromSyncedLyrics(string? synced)
-    {
-        if (string.IsNullOrWhiteSpace(synced)) return null;
-        try
-        {
-            var lines = new List<LrcLyricLine>();
-            foreach (var rawLine in synced.Split('\n'))
-            {
-                var line = rawLine.Trim();
-                if (line.Length == 0) continue;
-                var match = Regex.Match(line, @"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]");
-                if (!match.Success) continue;
-                var start = (int)(int.Parse(match.Groups[1].Value) * 60_000
-                    + int.Parse(match.Groups[2].Value) * 1000 + ParseFraction(match.Groups[3].Value));
-                var content = line.Substring(line.IndexOf(']') + 1);
+        => LrcUnifiedParser.Parse(synced);
 
-                // 词级尖括号 <mm:ss.xxx>
-                var words = new List<WordTimestamp>();
-                var wordRegex = new System.Text.RegularExpressions.Regex(@"<(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?>");
-                var sb = new StringBuilder();
-                var pos = 0;
-                var hasWords = false;
-                foreach (System.Text.RegularExpressions.Match w in wordRegex.Matches(content))
-                {
-                    hasWords = true;
-                    var prefix = content.Substring(pos, w.Index - pos);
-                    sb.Append(prefix);
-                    if (sb.Length > 0)
-                    {
-                        var wStart = (int)(int.Parse(w.Groups[1].Value) * 60_000
-                            + int.Parse(w.Groups[2].Value) * 1000 + ParseFraction(w.Groups[3].Value));
-                        words.Add(new WordTimestamp { Word = prefix, Start = TimeSpan.FromMilliseconds(wStart) });
-                    }
-                    pos = w.Index + w.Length;
-                }
-                var tail = content.Substring(pos);
-                sb.Append(tail);
-                var text = sb.ToString().Replace("<", "").Replace(">", "").Trim();
-                if (string.IsNullOrEmpty(text)) continue;
-
-                var wts = hasWords && words.Count > 1
-                    ? AssignWordDurations(words, text, start)
-                    : null;
-                lines.Add(new LrcLyricLine
-                {
-                    Timestamp = TimeSpan.FromMilliseconds(start),
-                    Text = text,
-                    WordTimestamps = wts,
-                });
-            }
-            if (lines.Count == 0) return null;
-            lines.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
-            return new LrcLyrics { Lines = lines };
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static List<WordTimestamp> AssignWordDurations(List<WordTimestamp> words, string lineText, int lineStartMs)
-    {
-        // 词间时长等分，最后一词到行文本结束。
-        var result = new List<WordTimestamp>();
-        for (int i = 0; i < words.Count; i++)
-        {
-            var startMs = (long)words[i].Start.TotalMilliseconds;
-            var endMs = i + 1 < words.Count
-                ? (long)words[i + 1].Start.TotalMilliseconds
-                : startMs + 3000;
-            result.Add(new WordTimestamp
-            {
-                Word = words[i].Word,
-                Start = TimeSpan.FromMilliseconds(startMs),
-                Duration = TimeSpan.FromMilliseconds(Math.Max(50, endMs - startMs)),
-            });
-        }
-        _ = lineText; _ = lineStartMs;
-        return result;
-    }
-
-    private static int ParseFraction(string? frac)
-    {
-        if (string.IsNullOrEmpty(frac)) return 0;
-        return frac.Length == 1 ? int.Parse(frac) * 100 : (frac.Length == 2 ? int.Parse(frac) * 10 : int.Parse(frac));
-    }
-
-    /// <summary>Lyrico LrcLyrics → LrclibTrack（把时间轴行序列化成 LRC 字符串，复用结果展示/写入管线）。</summary>
+    /// <summary>Lyrico LrcLyrics → LrclibTrack（按逐行模式编码，保留词级/翻译/罗马音数据，复用结果展示/写入管线）。</summary>
     private static LrclibTrack? LyricoToLrclibTrack(string sourceName, LrcLyrics lyrics, string title, string? artist)
     {
         if (lyrics.Lines.Count == 0) return null;
-        var sb = new StringBuilder();
-        foreach (var line in lyrics.Lines)
-        {
-            var t = line.Timestamp;
-            sb.Append($"[{(int)t.TotalMinutes:D2}:{t.Seconds:D2}.{t.Milliseconds:D3}]")
-              .Append(line.Text)
-              .Append('\n');
-        }
-        if (sb.Length == 0) return null;
+        var synced = LyricModeEncoder.Encode(lyrics, LyricMode.Plain);
+        if (string.IsNullOrWhiteSpace(synced)) return null;
 
         return new LrclibTrack
         {
             TrackName = string.IsNullOrWhiteSpace(lyrics.Metadata?.Title) ? title : lyrics.Metadata!.Title,
             ArtistName = string.IsNullOrWhiteSpace(lyrics.Metadata?.Artist) ? (artist ?? "") : lyrics.Metadata!.Artist,
             AlbumName = lyrics.Metadata?.Album,
-            SyncedLyrics = sb.ToString(),
+            SyncedLyrics = synced,
         };
     }
 

@@ -24,13 +24,11 @@ public static class LyricoLyricsConverter
                 return BuildStructured(c, metadata);
             case "rawPlainLrc":
             case "rawVerbatimLrc":
-                return BuildRawLrc(c, metadata, c.TryGetValue(type, out var v) ? v as string : null, enhanced: false);
             case "rawEnhancedLrc":
-                return BuildRawLrc(c, metadata, c.TryGetValue(type, out var ve) ? ve as string : null, enhanced: true);
+            case "rawMultiPersonEnhancedLrc":
+                return BuildRawLrc(metadata, c.TryGetValue(type, out var v) ? v as string : null);
             case "rawTtml":
                 return BuildTtml(c.TryGetValue(type, out var vt) ? vt as string : null, metadata);
-            case "rawMultiPersonEnhancedLrc":
-                return BuildMultiPerson(c.TryGetValue(type, out var vm) ? vm as string : null, metadata);
             default:
                 return BuildStructured(c, metadata);
         }
@@ -125,89 +123,17 @@ public static class LyricoLyricsConverter
         else lyrics.RomaLines = result;
     }
 
-    // ── raw LRC / Enhanced ──
+    // ── raw LRC / Verbatim / Enhanced / MultiPerson ──
+    // 统一走 LrcUnifiedParser：Plain/Verbatim/Enhanced 同一正则出词级时间戳，
+    // 同时间戳多行自动分离出 罗马音/翻译 轨道；MultiPerson 退化为普通解析。
 
-    private static readonly Regex EnhancedWordTag = new(@"<(\d+):([\d.]+)>", RegexOptions.Compiled);
-
-    private static LrcLyrics? BuildRawLrc(Dictionary<string, object?> c, LrcMetadata metadata, string? rawLrc, bool enhanced)
+    private static LrcLyrics? BuildRawLrc(LrcMetadata metadata, string? rawLrc)
     {
-        if (string.IsNullOrWhiteSpace(rawLrc)) return null;
-        var lines = enhanced ? ParseEnhancedLrc(rawLrc) : ParsePlainLrc(rawLrc);
-        if (lines.Count == 0) return null;
-        return new LrcLyrics { Metadata = metadata, Lines = lines };
+        var lyrics = LrcUnifiedParser.Parse(rawLrc);
+        if (lyrics == null) return null;
+        lyrics.Metadata = metadata;
+        return lyrics;
     }
-
-    /// <summary>普通 LRC 解析（复用宿主 LrcParser 语义的行级解析）。</summary>
-    private static List<LrcLyricLine> ParsePlainLrc(string text)
-    {
-        var result = new List<LrcLyricLine>();
-        foreach (var rawLine in text.Split('\n'))
-        {
-            var line = rawLine.Trim();
-            if (line.Length == 0) continue;
-            var matches = Regex.Matches(line, @"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]");
-            if (matches.Count == 0) continue;
-            var content = line.Substring(line.IndexOf(']') + 1).Trim();
-            if (string.IsNullOrEmpty(content)) continue;
-            foreach (Match m in matches)
-            {
-                var start = (int)(int.Parse(m.Groups[1].Value) * 60_000 + int.Parse(m.Groups[2].Value) * 1000
-                    + ParseFraction(m.Groups[3].Value));
-                result.Add(new LrcLyricLine { Timestamp = Ms(start), Text = StripWordTags(content) });
-            }
-        }
-        result.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
-        return result;
-    }
-
-    private static List<LrcLyricLine> ParseEnhancedLrc(string text)
-    {
-        var result = new List<LrcLyricLine>();
-        foreach (var rawLine in text.Split('\n'))
-        {
-            var line = rawLine.Trim();
-            if (line.Length == 0) continue;
-            var m = Regex.Match(line, @"\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]");
-            if (!m.Success) continue;
-            var lineStart = (int)(int.Parse(m.Groups[1].Value) * 60_000 + int.Parse(m.Groups[2].Value) * 1000
-                + ParseFraction(m.Groups[3].Value));
-            var content = line.Substring(line.IndexOf(']') + 1);
-
-            var words = new List<WordTimestamp>();
-            var sb = new System.Text.StringBuilder();
-            bool hasWord = false;
-            var pos = 0;
-            foreach (Match w in EnhancedWordTag.Matches(content))
-            {
-                hasWord = true;
-                var prefix = content.Substring(pos, w.Index - pos);
-                sb.Append(prefix);
-                if (sb.Length > 0)
-                {
-                    var wordEnd = (int)(int.Parse(w.Groups[1].Value) * 60_000 + (double.TryParse(w.Groups[2].Value, out var sec) ? sec * 1000 : 0));
-                    if (WordsHaveText(words) || string.IsNullOrEmpty(prefix))
-                    {
-                        words.Add(new WordTimestamp { Word = prefix, Start = Ms(lineStart + words.Sum(x => (long)x.Duration.TotalMilliseconds)), Duration = Ms(Math.Max(0, wordEnd - (lineStart + words.Sum(x => (long)x.Duration.TotalMilliseconds)))) });
-                    }
-                }
-                pos = w.Index + w.Length;
-            }
-            var tail = content.Substring(pos);
-            sb.Append(tail);
-            var lineText = StripWordTags(sb.ToString());
-            if (string.IsNullOrEmpty(lineText)) continue;
-            result.Add(new LrcLyricLine
-            {
-                Timestamp = Ms(lineStart),
-                Text = lineText,
-                WordTimestamps = hasWord && words.Count > 1 ? (List<WordTimestamp>?)words : null,
-            });
-        }
-        result.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
-        return result;
-    }
-
-    private static bool WordsHaveText(List<WordTimestamp> words) => words.Any(w => !string.IsNullOrEmpty(w.Word));
 
     // ── TTML ──
 
@@ -217,43 +143,56 @@ public static class LyricoLyricsConverter
         try
         {
             var doc = XDocument.Parse(ttml!);
-            var result = new List<LrcLyricLine>();
+            var originals = new List<LrcLyricLine>();
+            var translations = new List<LrcLyricLine>();
+            var romas = new List<LrcLyricLine>();
+
             foreach (var p in doc.Root?.DescendantsAndSelf().Where(x => x.Name.LocalName == "p") ?? Enumerable.Empty<XElement>())
             {
-                var begin = p.Attributes().FirstOrDefault(a => a.Name.LocalName == "begin")?.Value;
-                var end = p.Attributes().FirstOrDefault(a => a.Name.LocalName == "end")?.Value;
-                var startMs = (long)(ParseTtmlTime(begin) ?? 0);
-                var endMs = (long)(ParseTtmlTime(end) ?? (startMs + 3000));
+                var startMs = (long)(ParseTtmlTime(Attr(p, "begin")) ?? -1);
+                var endMs = (long)(ParseTtmlTime(Attr(p, "end")) ?? -1);
+                if (startMs < 0 && endMs < 0) continue;
+                if (startMs < 0) startMs = endMs;
+                if (endMs < 0) endMs = startMs + 3000;
 
-                var wordWords = p.Descendants().Where(x => x.Name.LocalName == "span").ToList();
-                List<WordTimestamp>? words = null;
-                string text;
-                if (wordWords.Count > 0)
+                var parsed = ParsePContent(p, startMs, endMs);
+                switch (Role(p))
                 {
-                    var wts = new List<WordTimestamp>();
-                    var sb = new System.Text.StringBuilder();
-                    foreach (var span in wordWords)
-                    {
-                        var ws = ParseTtmlTime(span.Attributes().FirstOrDefault(a => a.Name.LocalName == "begin")?.Value) ?? startMs;
-                        var we = ParseTtmlTime(span.Attributes().FirstOrDefault(a => a.Name.LocalName == "end")?.Value) ?? (ws + 300);
-                        var wText = span.Value;
-                        if (string.IsNullOrEmpty(wText)) continue;
-                        sb.Append(wText);
-                        wts.Add(new WordTimestamp { Word = wText, Start = Ms(ws), Duration = Ms(Math.Max(50, we - ws)) });
-                    }
-                    text = sb.ToString();
-                    if (wts.Count > 1) words = wts;
+                    case "x-translation":
+                        AddIfText(translations, startMs, parsed.CombinedText);
+                        break;
+                    case "x-romanization":
+                        AddIfText(romas, startMs, parsed.CombinedText);
+                        break;
+                    case "x-bg":
+                        break;   // 背景人声不入主行
+                    default:
+                        var text = parsed.CombinedText.Trim();
+                        if (text.Length == 0) break;
+                        originals.Add(new LrcLyricLine
+                        {
+                            Timestamp = Ms(startMs),
+                            Text = text,
+                            WordTimestamps = parsed.Words.Count > 1 ? parsed.Words : null,
+                            Role = Attr(p, "agent"),
+                        });
+                        AddIfText(translations, startMs, parsed.TranslationText);
+                        AddIfText(romas, startMs, parsed.RomaText);
+                        break;
                 }
-                else
-                {
-                    text = p.Value;
-                }
-                if (string.IsNullOrWhiteSpace(text)) continue;
-                result.Add(new LrcLyricLine { Timestamp = Ms(startMs), Text = text.Trim(), WordTimestamps = words });
             }
-            if (result.Count == 0) return null;
-            result.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
-            return new LrcLyrics { Metadata = metadata, Lines = result };
+
+            if (originals.Count == 0) return null;
+            originals.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+            translations.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+            romas.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+            return new LrcLyrics
+            {
+                Metadata = metadata,
+                Lines = originals,
+                TranslationLines = translations.Count > 0 ? translations : null,
+                RomaLines = romas.Count > 0 ? romas : null,
+            };
         }
         catch
         {
@@ -261,13 +200,88 @@ public static class LyricoLyricsConverter
         }
     }
 
+    /// <summary>遍历 &lt;p&gt; 的直接子节点：带 begin 的 span 为词级数据；role span 归翻译/罗马音；纯文本与无时间 span 归原文。</summary>
+    private static ParsedP ParsePContent(XElement p, long startMs, long endMs)
+    {
+        var words = new List<WordTimestamp>();
+        var original = new System.Text.StringBuilder();
+        var translation = new System.Text.StringBuilder();
+        var roma = new System.Text.StringBuilder();
+
+        foreach (var node in p.Nodes())
+        {
+            if (node is XText text)
+            {
+                original.Append(text.Value);
+                continue;
+            }
+            if (node is not XElement el || el.Name.LocalName != "span") continue;
+
+            switch (Role(el))
+            {
+                case "x-translation":
+                    translation.Append(el.Value);
+                    continue;
+                case "x-romanization":
+                    roma.Append(el.Value);
+                    continue;
+                case "x-bg":
+                    continue;
+            }
+
+            var begin = ParseTtmlTime(Attr(el, "begin"));
+            if (begin != null)
+            {
+                var wText = el.Value.Trim();
+                if (wText.Length == 0) continue;
+                var wEnd = (long)(ParseTtmlTime(Attr(el, "end")) ?? endMs);
+                words.Add(new WordTimestamp
+                {
+                    Word = wText,
+                    Start = Ms(begin.Value),
+                    Duration = Ms(Math.Max(50, wEnd - begin.Value)),
+                });
+            }
+            else
+            {
+                original.Append(el.Value);
+            }
+        }
+
+        return new ParsedP(words, original.ToString(), translation.ToString(), roma.ToString());
+    }
+
+    private sealed record ParsedP(
+        List<WordTimestamp> Words,
+        string OriginalText,
+        string TranslationText,
+        string RomaText)
+    {
+        public string CombinedText => Words.Count > 0
+            ? string.Concat(Words.Select(w => w.Word))
+            : OriginalText;
+    }
+
+    private static void AddIfText(List<LrcLyricLine> list, long startMs, string text)
+    {
+        var t = text?.Trim();
+        if (!string.IsNullOrEmpty(t))
+            list.Add(new LrcLyricLine { Timestamp = Ms(startMs), Text = t });
+    }
+
+    /// <summary>取 ttm:role 属性（按本地名匹配，忽略命名空间前缀差异）。</summary>
+    private static string? Role(XElement e) => Attr(e, "role");
+
+    private static string? Attr(XElement e, string localName)
+        => e.Attributes().FirstOrDefault(a => a.Name.LocalName == localName)?.Value;
+
     private static double? ParseTtmlTime(string? t)
     {
         if (string.IsNullOrEmpty(t)) return null;
         var m = Regex.Match(t, @"^(?:(\d+):)?(\d+):(\d+)(?:[.,](\d{1,3}))?$");
         if (!m.Success)
         {
-            // 帧率形式 00:00:12:15 f=... ——少见，忽略
+            // 帧率形式 00:00:12:15 —— 少见，忽略
             return null;
         }
         var h = m.Groups[1].Success ? double.Parse(m.Groups[1].Value) : 0;
@@ -277,25 +291,7 @@ public static class LyricoLyricsConverter
         return h * 3600_000 + mm * 60_000 + ss * 1000 + frac * 1000;
     }
 
-    // ── MultiPerson（尽力：按多时间戳折叠为普通行） ──
-
-    private static LrcLyrics? BuildMultiPerson(string? raw, LrcMetadata metadata)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return null;
-        // 行含共享文本与分人时间片，这里退化为取首个时间戳 + 剥离行内子标签的整行文本
-        return BuildRawLrc(new Dictionary<string, object?>(), metadata, raw, enhanced: true);
-    }
-
-    private static string StripWordTags(string text) =>
-        EnhancedWordTag.Replace(text ?? "", "").Replace("<", "").Replace(">", "").Trim();
-
     // ── helpers ──
-
-    private static int ParseFraction(string frac)
-    {
-        if (string.IsNullOrEmpty(frac)) return 0;
-        return frac.Length == 1 ? int.Parse(frac) * 100 : (frac.Length == 2 ? int.Parse(frac) * 10 : int.Parse(frac));
-    }
 
     private static TimeSpan Ms(double ms) => TimeSpan.FromMilliseconds(ms);
     private static double Num(object? o)

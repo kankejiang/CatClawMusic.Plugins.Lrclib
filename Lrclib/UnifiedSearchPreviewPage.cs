@@ -618,8 +618,15 @@ public sealed class UnifiedSearchPreviewPage : ContentPage
         }
 
         if (mode == LyricMode.TTML)
+        {
+            var (rt, tt) = LyricModeEncoder.CountSubLines(lyrics);
+            var extra = SubLineSuffix(rt, tt);
             return MakePanel(MakeCodeLabel(_vm.SelectedLyricsPreview),
-                $"TTML 源码预览 · 共 {lyrics.Lines.Count} 行");
+                $"TTML 源码预览 · 共 {lyrics.Lines.Count} 行{extra}");
+        }
+
+        // 原行 → 对齐的 (罗马音, 翻译)
+        var sub = LyricModeEncoder.AlignSubLines(lyrics);
 
         var stack = new VerticalStackLayout { Spacing = 0, Margin = new Thickness(8, 10, 8, 8) };
         foreach (var line in lyrics.Lines)
@@ -643,6 +650,8 @@ public sealed class UnifiedSearchPreviewPage : ContentPage
             ts.SetDynamicResource(Label.TextColorProperty, "TextSecondaryColor");
             row.Add(ts, 0, 0);
 
+            // 右列：原文 + 罗马音 + 翻译（对齐 Lyrico 行序）
+            var textCol = new VerticalStackLayout { Spacing = 2 };
             var text = new Label
             {
                 FontSize = 13.5,
@@ -651,14 +660,46 @@ public sealed class UnifiedSearchPreviewPage : ContentPage
             };
             text.SetDynamicResource(Label.TextColorProperty, "TextSecondaryColor");
             text.FormattedText = BuildLineText(line, mode);
-            row.Add(text, 1, 0);
+            textCol.Children.Add(text);
+
+            if (sub.TryGetValue(line, out var s))
+            {
+                if (s.Roma is { Text.Length: > 0 })
+                    textCol.Children.Add(MakeSubLabel(s.Roma.Text));
+                if (s.Trans is { Text.Length: > 0 })
+                    textCol.Children.Add(MakeSubLabel(s.Trans.Text));
+            }
+            row.Add(textCol, 1, 0);
 
             WideAdapt.AttachHover(row);
             stack.Children.Add(row);
         }
 
+        var (rt2, tt2) = LyricModeEncoder.CountSubLines(lyrics);
         return MakePanel(new ScrollView { Content = stack },
-            $"共 {lyrics.Lines.Count} 行 · {ModeShortName(mode)}预览");
+            $"共 {lyrics.Lines.Count} 行 · {ModeShortName(mode)}预览{SubLineSuffix(rt2, tt2)}");
+    }
+
+    /// <summary>罗马音/翻译行：小号次级色，跟在原文下方。</summary>
+    private static Label MakeSubLabel(string text)
+    {
+        var l = new Label
+        {
+            Text = text,
+            FontSize = 11.5,
+            LineBreakMode = LineBreakMode.WordWrap,
+            VerticalOptions = LayoutOptions.Start,
+        };
+        l.SetDynamicResource(Label.TextColorProperty, "TextSecondaryColor");
+        return l;
+    }
+
+    private static string SubLineSuffix(int romaCount, int transCount)
+    {
+        var parts = new List<string>();
+        if (romaCount > 0) parts.Add($"罗马音 {romaCount}");
+        if (transCount > 0) parts.Add($"翻译 {transCount}");
+        return parts.Count > 0 ? $" · {string.Join(" / ", parts)}" : "";
     }
 
     /// <summary>按模式构造行内容：逐行=纯文本；逐字=词后小时间戳；增强=词前 (时间,时长)。无词级数据回退纯文本。</summary>

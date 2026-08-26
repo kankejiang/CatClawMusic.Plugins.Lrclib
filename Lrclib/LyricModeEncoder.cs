@@ -35,16 +35,17 @@ public static class LyricModeEncoder
         _ => "逐行歌词",
     };
 
-    /// <summary>把 LrcLyrics 按指定模式编码为歌词文本。</summary>
+    /// <summary>把 LrcLyrics 按指定模式编码为歌词文本（原文行后按 Lyrico 行序跟随 罗马音、翻译 行）。</summary>
     public static string Encode(LrcLyrics? lyrics, LyricMode mode)
     {
         if (lyrics == null || lyrics.Lines.Count == 0) return "（该结果无歌词）";
+        var sub = AlignSubLines(lyrics);
         return mode switch
         {
-            LyricMode.Verbatim => EncodeVerbatim(lyrics),
-            LyricMode.Enhanced => EncodeEnhanced(lyrics),
-            LyricMode.TTML => EncodeTtml(lyrics),
-            _ => EncodePlain(lyrics),
+            LyricMode.Verbatim => EncodeVerbatim(lyrics, sub),
+            LyricMode.Enhanced => EncodeEnhanced(lyrics, sub),
+            LyricMode.TTML => EncodeTtml(lyrics, sub),
+            _ => EncodePlain(lyrics, sub),
         };
     }
 
@@ -52,9 +53,56 @@ public static class LyricModeEncoder
     public static bool HasWordTimestamps(LrcLyrics? lyrics)
         => lyrics != null && lyrics.Lines.Any(l => l.WordTimestamps is { Count: > 1 });
 
+    /// <summary>
+    /// 把 RomaLines / TranslationLines 按时间戳对齐到原行（对齐 Lyrico alignSubLines：
+    /// 同时间戳的多条子行按顺序取用，先到先得）。预览页与编码器共用。
+    /// </summary>
+    public static IReadOnlyDictionary<LrcLyricLine, (LrcLyricLine? Roma, LrcLyricLine? Trans)> AlignSubLines(
+        LrcLyrics lyrics)
+    {
+        var map = new Dictionary<LrcLyricLine, (LrcLyricLine?, LrcLyricLine?)>();
+        var romaPool = GroupByStart(lyrics.RomaLines);
+        var transPool = GroupByStart(lyrics.TranslationLines);
+        if (romaPool.Count == 0 && transPool.Count == 0) return map;
+
+        foreach (var line in lyrics.Lines)
+        {
+            var key = (long)line.Timestamp.TotalMilliseconds;
+            map[line] = (Take(romaPool, key), Take(transPool, key));
+        }
+        return map;
+    }
+
+    /// <summary>统计罗马音/翻译对齐行数，供预览页展示。</summary>
+    public static (int Roma, int Trans) CountSubLines(LrcLyrics? lyrics)
+    {
+        if (lyrics == null) return (0, 0);
+        var sub = AlignSubLines(lyrics);
+        return (sub.Values.Count(v => v.Roma != null), sub.Values.Count(v => v.Trans != null));
+    }
+
+    private static Dictionary<long, Queue<LrcLyricLine>> GroupByStart(List<LrcLyricLine>? lines)
+        => lines?.GroupBy(l => (long)l.Timestamp.TotalMilliseconds)
+                 .ToDictionary(g => g.Key, g => new Queue<LrcLyricLine>(g))
+             ?? new Dictionary<long, Queue<LrcLyricLine>>();
+
+    private static LrcLyricLine? Take(Dictionary<long, Queue<LrcLyricLine>> pool, long key)
+        => pool.TryGetValue(key, out var q) && q.Count > 0 ? q.Dequeue() : null;
+
+    private static void AppendSubLines(StringBuilder sb,
+        IReadOnlyDictionary<LrcLyricLine, (LrcLyricLine? Roma, LrcLyricLine? Trans)> sub, LrcLyricLine line)
+    {
+        if (!sub.TryGetValue(line, out var s)) return;
+        if (s.Roma != null && s.Roma.Text.Length > 0)
+            sb.Append('[').Append(FormatLrcTime(s.Roma.Timestamp)).Append(']').Append(s.Roma.Text).Append('\n');
+        if (s.Trans != null && s.Trans.Text.Length > 0)
+            sb.Append('[').Append(FormatLrcTime(s.Trans.Timestamp)).Append(']').Append(s.Trans.Text).Append('\n');
+    }
+
     // ── 逐行：标准 LRC ──
 
-    private static string EncodePlain(LrcLyrics lyrics)
+    private static string EncodePlain(LrcLyrics lyrics,
+        IReadOnlyDictionary<LrcLyricLine, (LrcLyricLine? Roma, LrcLyricLine? Trans)> sub)
     {
         var sb = new StringBuilder();
         foreach (var line in lyrics.Lines)
@@ -63,13 +111,15 @@ public static class LyricModeEncoder
             sb.Append('[').Append(FormatLrcTime(t)).Append(']')
               .Append(LineText(line))
               .Append('\n');
+            AppendSubLines(sb, sub, line);
         }
         return sb.ToString();
     }
 
     // ── 逐字：每词方括号 ──
 
-    private static string EncodeVerbatim(LrcLyrics lyrics)
+    private static string EncodeVerbatim(LrcLyrics lyrics,
+        IReadOnlyDictionary<LrcLyricLine, (LrcLyricLine? Roma, LrcLyricLine? Trans)> sub)
     {
         var sb = new StringBuilder();
         foreach (var line in lyrics.Lines)
@@ -94,13 +144,15 @@ public static class LyricModeEncoder
                 sb.Append('[').Append(FormatLrcTime(t)).Append(']').Append(LineText(line));
             }
             sb.Append('\n');
+            AppendSubLines(sb, sub, line);
         }
         return sb.ToString();
     }
 
     // ── 增强：行方括号 + 词尖括号 ──
 
-    private static string EncodeEnhanced(LrcLyrics lyrics)
+    private static string EncodeEnhanced(LrcLyrics lyrics,
+        IReadOnlyDictionary<LrcLyricLine, (LrcLyricLine? Roma, LrcLyricLine? Trans)> sub)
     {
         var sb = new StringBuilder();
         foreach (var line in lyrics.Lines)
@@ -122,13 +174,17 @@ public static class LyricModeEncoder
                 sb.Append(' ').Append(LineText(line));
             }
             sb.Append('\n');
+            AppendSubLines(sb, sub, line);
         }
         return sb.ToString();
     }
 
     // ── TTML ──
 
-    private static string EncodeTtml(LrcLyrics lyrics)
+    private static readonly XNamespace TtmRoleNs = "http://www.w3.org/ns/ttml#metadata";
+
+    private static string EncodeTtml(LrcLyrics lyrics,
+        IReadOnlyDictionary<LrcLyricLine, (LrcLyricLine? Roma, LrcLyricLine? Trans)> sub)
     {
         var root = new XElement("tt",
             new XAttribute(XNamespace.Xml + "lang", "en"),
@@ -163,10 +219,13 @@ public static class LyricModeEncoder
                 p.Add(LineText(line));
             }
 
-            if (!string.IsNullOrWhiteSpace(line.Translation))
-                p.Add(new XElement("span",
-                    new XAttribute(XNamespace.Get("http://www.w3.org/ns/ttml#metadata") + "role", "x-translation"),
-                    line.Translation));
+            if (sub.TryGetValue(line, out var s))
+            {
+                if (s.Roma is { Text.Length: > 0 })
+                    p.Add(new XElement("span", new XAttribute(TtmRoleNs + "role", "x-romanization"), s.Roma.Text));
+                if (s.Trans is { Text.Length: > 0 })
+                    p.Add(new XElement("span", new XAttribute(TtmRoleNs + "role", "x-translation"), s.Trans.Text));
+            }
 
             body.Add(p);
         }
