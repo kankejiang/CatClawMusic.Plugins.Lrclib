@@ -42,6 +42,19 @@ public class SearchCoverPage : ContentPage
         Content = content;
     }
 
+    private bool _autoSearched;
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        // 进入页面自动搜索一次当前歌曲（从编辑页跳转时免手动点搜索）
+        if (!_autoSearched && _vm.SearchCommand.CanExecute(null))
+        {
+            _autoSearched = true;
+            _vm.SearchCommand.Execute(null);
+        }
+    }
+
     // ── 顶部搜索面板 ──
     private View BuildSearchPanel()
     {

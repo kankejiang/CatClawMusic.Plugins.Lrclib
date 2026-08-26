@@ -25,6 +25,19 @@ public class SongDetailPage : ContentPage
         _ = LoadAsync();
     }
 
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        // 进入详情页后直接跳到编辑标签页（Lyrico 式工作流）
+        _ = NavigateToEditorAsync();
+    }
+
+    private async Task NavigateToEditorAsync()
+    {
+        await Task.Delay(50);  // 等首帧渲染完成再推，避免动画错乱
+        await PluginNav.PushAsync(new EditMetadataPage(_vm.Song));
+    }
+
     private async Task LoadAsync()
     {
         await _vm.LoadAsync();

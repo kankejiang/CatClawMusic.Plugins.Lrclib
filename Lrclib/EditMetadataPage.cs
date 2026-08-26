@@ -16,8 +16,94 @@ public class EditMetadataPage : ContentPage
         Title = "编辑标签";
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
 
-        Content = new ScrollView { Content = BuildContent() };
+        var topBar = BuildTopBar();
+        var scroll = new ScrollView { Content = BuildContent() };
+
+        var root = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Star),
+            },
+        };
+        root.Add(topBar, 0, 0);
+        root.Add(scroll, 0, 1);
+        Content = root;
+
         _ = _vm.LoadAsync();
+    }
+
+    /// <summary>顶部操作栏：左「搜索」+ 中间标题 + 右「确认」（保存）。</summary>
+    private View BuildTopBar()
+    {
+        var searchBtn = new Button
+        {
+            Text = "搜索",
+            FontSize = 14,
+            TextColor = ThemeHelper.Color("TextPrimaryColor", "#F7F8FF"),
+            BackgroundColor = ThemeHelper.Color("CardBackgroundColor", "#1AFFFFFF"),
+            CornerRadius = 16,
+            HeightRequest = 36,
+            Padding = new Thickness(14, 0),
+            HorizontalOptions = LayoutOptions.Start,
+        };
+        searchBtn.Clicked += OnSearchClicked;
+
+        var title = ThemeHelper.Label(17, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", true);
+        title.Text = "编辑标签";
+        title.HorizontalOptions = LayoutOptions.Center;
+        title.VerticalOptions = LayoutOptions.Center;
+
+        var confirmBtn = new Button
+        {
+            Text = "确认",
+            FontSize = 14,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Colors.White,
+            BackgroundColor = ThemeHelper.Color("PrimaryColor", "#8C7BFF"),
+            CornerRadius = 16,
+            HeightRequest = 36,
+            Padding = new Thickness(14, 0),
+            HorizontalOptions = LayoutOptions.End,
+        };
+        confirmBtn.Clicked += OnConfirmClicked;
+
+        var bar = new Grid
+        {
+            Padding = new Thickness(16, 6, 16, 6),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+            },
+        };
+        bar.Add(searchBtn, 0, 0);
+        bar.Add(title, 1, 0);
+        bar.Add(confirmBtn, 2, 0);
+        return bar;
+    }
+
+    private async void OnSearchClicked(object? sender, EventArgs e)
+    {
+        var action = await DisplayActionSheet("搜索补全", "取消", null, "搜索歌词", "搜索封面");
+        if (action == "搜索歌词")
+            await PluginNav.PushAsync(new SearchLyricsPage(_vm.Song));
+        else if (action == "搜索封面")
+            await PluginNav.PushAsync(new SearchCoverPage(_vm.Song));
+    }
+
+    private async void OnConfirmClicked(object? sender, EventArgs e)
+    {
+        var btn = sender as Button;
+        if (btn != null) btn.IsEnabled = false;
+        var ok = await _vm.SaveAsync();
+        if (btn != null) btn.IsEnabled = true;
+        if (ok)
+        {
+            await DisplayAlert("已保存", "标签已写入音频文件。", "好");
+        }
     }
 
     private View BuildContent()
