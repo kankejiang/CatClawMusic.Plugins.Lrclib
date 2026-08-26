@@ -43,6 +43,10 @@ public class UnifiedSearchPage : ContentPage
         content.Add(_searchContainer, 0, 0);
         content.Add(list, 0, 1);
 
+        var sheet = BuildPreviewSheet();
+        Grid.SetRowSpan(sheet, 2);
+        content.Add(sheet, 0, 0);
+
         Content = content;
     }
 
@@ -272,21 +276,144 @@ public class UnifiedSearchPage : ContentPage
         };
 
         var tap = new TapGestureRecognizer();
-        tap.Tapped += async (s, e) =>
+        tap.Tapped += (s, e) =>
         {
             var src = (s as TapGestureRecognizer)?.Parent as BindableObject;
-            if (src?.BindingContext is not UnifiedSearchResult item)
-            {
-                _vm.StatusText = "未取到数据项";
-                return;
-            }
-            _vm.StatusText = "正在写入...";
-            try { await _vm.ApplyCommand.ExecuteAsync(item); }
-            catch (Exception ex) { _vm.StatusText = $"写入异常：{ex.Message}"; }
+            if (src?.BindingContext is not UnifiedSearchResult item) return;
+            _vm.OpenPreviewCommand.Execute(item);
         };
         card.GestureRecognizers.Add(tap);
 
         return card;
+    }
+
+    // ── 底部预览面板（封面 + 歌词）──
+    private Grid BuildPreviewSheet()
+    {
+        var scrim = new BoxView { Color = Color.FromArgb("#8C000000") };
+        var scrimTap = new TapGestureRecognizer();
+        scrimTap.Tapped += (_, _) => _vm.ClosePreviewCommand.Execute(null);
+        scrim.GestureRecognizers.Add(scrimTap);
+
+        // 标题
+        var sheetTitle = NewLabel(17, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", tail: true);
+        sheetTitle.SetBinding(Label.TextProperty,
+            new Binding($"{nameof(UnifiedSearchViewModel.Selected)}.{nameof(UnifiedSearchResult.DisplayTitle)}"));
+        sheetTitle.MaxLines = 1;
+
+        var sheetSubtitle = NewLabel(12, FontAttributes.None, "TextSecondaryColor", "#C2C6E4", tail: true);
+        sheetSubtitle.SetBinding(Label.TextProperty,
+            new Binding($"{nameof(UnifiedSearchViewModel.Selected)}.{nameof(UnifiedSearchResult.Subtitle)}"));
+
+        // 封面预览图
+        var coverImg = new Image
+        {
+            HeightRequest = 160,
+            WidthRequest = 160,
+            Aspect = Aspect.AspectFill,
+            HorizontalOptions = LayoutOptions.Center,
+        };
+        coverImg.SetBinding(Image.SourceProperty,
+            new Binding($"{nameof(UnifiedSearchViewModel.Selected)}.{nameof(UnifiedSearchResult.HighResCoverUrl)}")
+            { Converter = new CoverUriConverter() });
+        coverImg.SetBinding(VisualElement.IsVisibleProperty,
+            new Binding($"{nameof(UnifiedSearchViewModel.Selected)}.{nameof(UnifiedSearchResult.HasCover)}"));
+
+        var coverPlaceholder = new Border
+        {
+            HeightRequest = 160,
+            WidthRequest = 160,
+            HorizontalOptions = LayoutOptions.Center,
+            StrokeThickness = 0,
+            Background = GetBrush("CardBackgroundStrongColor", "#2DFFFFFF"),
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(16) },
+            Content = new Label
+            {
+                FontSize = 48,
+                FontAttributes = FontAttributes.Bold,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+            }
+        };
+        ((Label)coverPlaceholder.Content).SetBinding(Label.TextProperty,
+            new Binding($"{nameof(UnifiedSearchViewModel.Selected)}.{nameof(UnifiedSearchResult.CoverText)}"));
+        ((Label)coverPlaceholder.Content).SetDynamicResource(Label.TextColorProperty, "PrimaryColor");
+        coverPlaceholder.SetBinding(VisualElement.IsVisibleProperty,
+            new Binding($"{nameof(UnifiedSearchViewModel.Selected)}.{nameof(UnifiedSearchResult.HasCover)}")
+            { Converter = new InvertBoolConverter() });
+
+        var coverBox = new Grid
+        {
+            HeightRequest = 160,
+            HorizontalOptions = LayoutOptions.Center,
+            Children = { coverPlaceholder, coverImg },
+        };
+
+        // 歌词预览
+        var lyricsLabel = NewLabel(13, FontAttributes.None, "TextSecondaryColor", "#C2C6E4", tail: false);
+        lyricsLabel.LineBreakMode = LineBreakMode.NoWrap;
+        lyricsLabel.VerticalOptions = LayoutOptions.Start;
+        lyricsLabel.SetBinding(Label.TextProperty,
+            new Binding($"{nameof(UnifiedSearchViewModel.Selected)}.{nameof(UnifiedSearchResult.PreviewLyrics)}"));
+
+        var lyricsScroll = new ScrollView
+        {
+            MaximumHeightRequest = 180,
+            Content = lyricsLabel,
+        };
+
+        var lyricsHeader = NewLabel(13, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", false);
+        lyricsHeader.Text = "歌词预览";
+
+        // 写入按钮
+        var applyButton = new Button
+        {
+            Text = "写入标签",
+            FontSize = 15,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Colors.White,
+            BackgroundColor = Text("PrimaryColor", "#8C7BFF"),
+            CornerRadius = 20,
+            HeightRequest = 44,
+        };
+        applyButton.SetBinding(Button.CommandProperty, nameof(UnifiedSearchViewModel.ApplyCommand));
+        applyButton.SetBinding(Button.IsEnabledProperty,
+            new Binding(nameof(UnifiedSearchViewModel.IsBusy)) { Converter = new InverseBooleanConverter(), Source = _vm });
+
+        var panel = new Border
+        {
+            StrokeThickness = 0,
+            Background = GetBrush("WindowBackgroundColor", "#FF2A254E"),
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(20, 20, 0, 0) },
+            Padding = new Thickness(20, 16, 20, 24),
+            Content = new VerticalStackLayout
+            {
+                Spacing = 12,
+                Children =
+                {
+                    sheetTitle,
+                    sheetSubtitle,
+                    coverBox,
+                    lyricsHeader,
+                    lyricsScroll,
+                    applyButton,
+                },
+            },
+        };
+
+        var sheet = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Star),
+                new RowDefinition(GridLength.Auto),
+            },
+        };
+        sheet.Add(scrim, 0, 0);
+        sheet.Add(panel, 0, 1);
+        sheet.SetBinding(Grid.IsVisibleProperty, nameof(UnifiedSearchViewModel.ShowPreview));
+
+        return sheet;
     }
 
     // ── 小工具 ──

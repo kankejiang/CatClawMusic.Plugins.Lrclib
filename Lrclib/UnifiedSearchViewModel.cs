@@ -25,6 +25,8 @@ public partial class UnifiedSearchViewModel : ObservableObject
     [ObservableProperty] private string searchArtist = "";
     [ObservableProperty] private bool isBusy;
     [ObservableProperty] private string statusText = string.Empty;
+    [ObservableProperty] private bool showPreview;
+    [ObservableProperty] private UnifiedSearchResult? selected;
 
     /// <summary>合并后的搜索结果列表</summary>
     public ObservableCollection<UnifiedSearchResult> Results { get; } = new();
@@ -207,8 +209,21 @@ public partial class UnifiedSearchViewModel : ObservableObject
 
     /// <summary>点击结果直接写入歌词 + 封面到文件。</summary>
     [RelayCommand]
-    private async Task ApplyAsync(UnifiedSearchResult? item)
+    private void OpenPreview(UnifiedSearchResult? item)
     {
+        if (item == null) return;
+        Selected = item;
+        ShowPreview = true;
+    }
+
+    [RelayCommand]
+    private void ClosePreview() => ShowPreview = false;
+
+    /// <summary>写入选中结果的歌词 + 封面到文件。</summary>
+    [RelayCommand]
+    private async Task ApplyAsync()
+    {
+        var item = Selected;
         if (item == null || _audio == null) return;
 
         var writeLyrics = item.HasLyrics && item.LyricsTrack != null;
@@ -261,6 +276,7 @@ public partial class UnifiedSearchViewModel : ObservableObject
                 if (ok)
                 {
                     StatusText = $"已写入 {okCount} 项（{(writeLyrics ? "歌词" : "")}{(writeLyrics && writeCover ? " + " : "")}{(writeCover ? "封面" : "")}）";
+                    ShowPreview = false;
                 }
                 else
                 {
