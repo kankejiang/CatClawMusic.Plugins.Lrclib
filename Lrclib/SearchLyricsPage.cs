@@ -341,8 +341,8 @@ public class SearchLyricsPage : ContentPage
         var panel = new Border
         {
             StrokeThickness = 0,
-            Background = GetBrush("CardBackgroundStrongColor", "#2DFFFFFF"),
-            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(0, 0, 0, 0) },
+            Background = GetBrush("WindowBackgroundColor", "#FF2A254E"),
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(20, 20, 0, 0) },
             Padding = new Thickness(20, 16, 20, 24),
             Content = new VerticalStackLayout
             {
