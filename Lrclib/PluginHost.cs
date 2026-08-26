@@ -177,8 +177,11 @@ internal static class PluginNav
     /// </summary>
     private static void AddBackHeader(ContentPage page)
     {
-        if (page.Content is not Layout inner) return;
-        if (inner is Grid g && g.ClassId == "plugin-nav-wrap") return;   // 幂等保护
+        // 兼容非 Layout Content（如 ScrollView 等）：统一装入外层 Grid，
+        // 确保返回头对任何详情页都能注入。
+        var body = page.Content;
+        if (body == null) return;
+        if (body is Grid g && g.ClassId == "plugin-nav-wrap") return;   // 幂等保护
 
         var back = new Border
         {
@@ -231,7 +234,7 @@ internal static class PluginNav
             RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Star) },
         };
         outer.Add(header, 0, 0);
-        outer.Add(inner, 0, 1);
+        outer.Add(body, 0, 1);
         page.Content = outer;
     }
 }
