@@ -24,9 +24,7 @@ public partial class UnifiedSearchViewModel : ObservableObject
     [ObservableProperty] private string searchTitle = "";
     [ObservableProperty] private string searchArtist = "";
     [ObservableProperty] private bool isBusy;
-    [ObservableProperty] private string statusText = "";
-    [ObservableProperty] private bool showPreview;
-    [ObservableProperty] private UnifiedSearchResult? selected;
+    [ObservableProperty] private string statusText = string.Empty;
 
     /// <summary>合并后的搜索结果列表</summary>
     public ObservableCollection<UnifiedSearchResult> Results { get; } = new();
@@ -207,23 +205,11 @@ public partial class UnifiedSearchViewModel : ObservableObject
         };
     }
 
+    /// <summary>点击结果直接写入歌词 + 封面到文件。</summary>
     [RelayCommand]
-    private void ClosePreview() => ShowPreview = false;
-
-    [RelayCommand]
-    private void OpenPreview(UnifiedSearchResult? item)
+    private async Task ApplyAsync(UnifiedSearchResult? item)
     {
-        if (item == null) return;
-        Selected = item;
-        ShowPreview = true;
-    }
-
-    /// <summary>写入歌词 + 封面到文件。</summary>
-    [RelayCommand]
-    private async Task ApplyAsync()
-    {
-        if (Selected == null || _audio == null) return;
-        var item = Selected;
+        if (item == null || _audio == null) return;
 
         var writeLyrics = item.HasLyrics && item.LyricsTrack != null;
         var writeCover = item.HasCover && !string.IsNullOrWhiteSpace(item.HighResCoverUrl);
@@ -275,7 +261,6 @@ public partial class UnifiedSearchViewModel : ObservableObject
                 if (ok)
                 {
                     StatusText = $"已写入 {okCount} 项（{(writeLyrics ? "歌词" : "")}{(writeLyrics && writeCover ? " + " : "")}{(writeCover ? "封面" : "")}）";
-                    ShowPreview = false;
                 }
                 else
                 {
