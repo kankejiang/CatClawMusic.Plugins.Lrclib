@@ -74,6 +74,8 @@ public class LyricoSourceConfigPage : ContentPage
             }
 
             var container = new VerticalStackLayout { Spacing = 4 };
+            // 关键：容器 BindingContext 指向该字段项，否则所有子控件绑定解析到页面 VM 而静默失效
+            container.BindingContext = field;
             container.SetBinding(VisualElement.IsVisibleProperty, nameof(LyricoConfigFieldItem.IsVisible));
 
             // 标题 + 必填标记

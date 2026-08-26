@@ -41,7 +41,7 @@ public class BatchTaskDetailPage : ContentPage
         itemsHeader.Text = $"逐首明细（{items.Count}）";
         itemsHeader.Margin = new Thickness(16, 10, 16, 0);
 
-        Content = new Grid
+        var root = new Grid
         {
             RowDefinitions =
             {
@@ -49,8 +49,11 @@ public class BatchTaskDetailPage : ContentPage
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
-            Children = { summary, itemsHeader, list },
         };
+        root.Add(summary, 0, 0);
+        root.Add(itemsHeader, 0, 1);
+        root.Add(list, 0, 2);
+        Content = root;
     }
 
     private static View Row(string label, string value)
@@ -60,15 +63,17 @@ public class BatchTaskDetailPage : ContentPage
         var v = ThemeHelper.Label(13, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", true);
         v.Text = value;
 
-        return new Grid
+        var g = new Grid
         {
             ColumnDefinitions =
             {
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Star),
             },
-            Children = { l, v },
         };
+        g.Add(l, 0, 0);
+        g.Add(v, 1, 0);
+        return g;
     }
 
     private View BuildItemRow()

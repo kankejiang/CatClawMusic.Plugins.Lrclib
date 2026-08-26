@@ -55,3 +55,18 @@ internal sealed class StringNotEmptyConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+/// <summary>byte[]? → ImageSource（从内存流构造）。null 返回 null（让占位图标透出）。</summary>
+internal sealed class IconBytesToSourceConverter : IValueConverter
+{
+    public static readonly IconBytesToSourceConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not byte[] bytes || bytes.Length == 0) return null;
+        return ImageSource.FromStream(_ => Task.FromResult<Stream>(new MemoryStream(bytes)));
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}

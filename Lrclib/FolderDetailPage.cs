@@ -41,35 +41,40 @@ public class FolderDetailPage : ContentPage
         _empty.Margin = new Thickness(0, 16, 0, 0);
         _empty.IsVisible = false;
 
-        Content = new Grid
+        var root = new Grid
         {
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
-            Children = { subtitle, _list, _empty },
         };
+        root.Add(subtitle, 0, 0);
+        root.Add(_list, 0, 1);
+        root.Add(_empty, 0, 1);   // 与列表同行，互斥显示
+        Content = root;
+        KickOffLoad();
     }
 
-    protected override async void OnAppearing()
+    /// <summary>构造期即启动加载：桌面模态导航 WrapRoot 会吞掉首推页的 OnAppearing，不能依赖它触发。</summary>
+    private void KickOffLoad()
     {
-        base.OnAppearing();
         if (_loaded || PluginHost.Library is not IMusicLibraryService lib) return;
         _loaded = true;
+        _ = LoadAsync(lib);
+    }
 
+    private async Task LoadAsync(IMusicLibraryService lib)
+    {
         try
         {
             var localDir = _folder.Path;
-            var songs = await Task.Run(() =>
-            {
-                var all = lib.GetAllSongsAsync().GetAwaiter().GetResult() ?? new List<Song>();
-                return all
-                    .Where(s => s.Source == SongSource.Local
-                        && string.Equals(MusicLibraryViewModel.DirectoryNameOf(s.FilePath), localDir, StringComparison.OrdinalIgnoreCase))
-                    .Select(s => new SongItem(s))
-                    .ToList();
-            });
+            var all = await lib.GetAllSongsAsync() ?? new List<Song>();
+            var songs = all
+                .Where(s => s.Source == SongSource.Local
+                    && string.Equals(MusicLibraryViewModel.DirectoryNameOf(s.FilePath), localDir, StringComparison.OrdinalIgnoreCase))
+                .Select(s => new SongItem(s))
+                .ToList();
             foreach (var s in songs) _songs.Add(s);
             if (_songs.Count == 0) _empty.IsVisible = true;
         }

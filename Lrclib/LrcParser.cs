@@ -32,12 +32,17 @@ public static class LrcParser
             var line = rawLine.TrimEnd('\r');
             if (string.IsNullOrWhiteSpace(line)) continue;
 
-            // 元数据标签行（可单独一行，也可与时间戳共存）
-            var tagMatch = TagRegex.Match(line);
-            if (tagMatch.Success && !line.TrimStart().StartsWith("["))
+            // 元数据标签行：仅当行首为 [ti:/ar:/...] 标签且整行不含时间戳时才视为元数据，
+            // 否则落入下方时间戳/纯文本分支（原条件写反导致元数据被当作 Timestamp=0 的歌词行）
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith("[", StringComparison.Ordinal) && !TimeRegex.IsMatch(trimmed))
             {
-                ApplyMetadata(lyrics.Metadata, tagMatch.Groups[1].Value.ToLowerInvariant(), tagMatch.Groups[2].Value.Trim());
-                continue;
+                var tagMatch = TagRegex.Match(trimmed);
+                if (tagMatch.Success && tagMatch.Index == 0)
+                {
+                    ApplyMetadata(lyrics.Metadata, tagMatch.Groups[1].Value.ToLowerInvariant(), tagMatch.Groups[2].Value.Trim());
+                    continue;
+                }
             }
 
             // 提取该行所有时间戳

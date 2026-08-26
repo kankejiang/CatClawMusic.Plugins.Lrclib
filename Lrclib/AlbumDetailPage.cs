@@ -15,6 +15,7 @@ public class AlbumDetailPage : ContentPage
     public AlbumDetailPage(AlbumItem album)
     {
         _album = album;
+        BindingContext = album;   // 页头绑定依赖（Title/Subtitle/CoverPath/CoverText）
         Title = album.Title;
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
 
@@ -32,12 +33,23 @@ public class AlbumDetailPage : ContentPage
         root.Add(BuildHeader(), 0, 0);
         root.Add(_list, 0, 1);
         Content = root;
+        KickOffLoad();
     }
 
-    protected override async void OnAppearing()
+    private bool _loaded;
+
+    /// <summary>构造期即启动加载：桌面模态导航 WrapRoot 会吞掉首推页的 OnAppearing，不能依赖它触发。</summary>
+    private void KickOffLoad()
+    {
+        if (_loaded) return;
+        _loaded = true;
+        _ = LoadAsync();
+    }
+
+    protected override void OnAppearing()
     {
         base.OnAppearing();
-        await LoadAsync();
+        KickOffLoad();
     }
 
     private async Task LoadAsync()

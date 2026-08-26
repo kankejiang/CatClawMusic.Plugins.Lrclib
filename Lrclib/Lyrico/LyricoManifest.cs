@@ -20,6 +20,8 @@ public sealed class LyricoManifest
     /// <summary>插件声明的配置项（manifest.json 的 configFields）。
     /// 用户在配置页填写，脚本经 request.config 读取。</summary>
     public List<LyricoConfigField> ConfigFields { get; set; } = new();
+    /// <summary>插件图标文件相对路径（manifest.json 的 icon，如 "icon.png"）。null/空时用默认占位。</summary>
+    public string? Icon { get; set; }
 }
 
 /// <summary>
@@ -90,6 +92,23 @@ public sealed class LyricoSourceCatalog
     {
         if (!_files.TryGetValue(plugin, out var files)) return null;
         return new Dictionary<string, string>(files);
+    }
+
+    /// <summary>取某插件图标文件的原始字节（图片，不能用 ReadAllText）。
+    /// iconRelPath 为 manifest 声明的相对路径（如 "icon.png"）；不存在返回 null。</summary>
+    public byte[]? GetIconBytes(string plugin, string? iconRelPath)
+    {
+        if (string.IsNullOrWhiteSpace(iconRelPath)) return null;
+        try
+        {
+            var path = Path.Combine(SourcesRoot, plugin, iconRelPath.Replace('/', Path.DirectorySeparatorChar));
+            // 路径穿越防护
+            var full = Path.GetFullPath(path);
+            var rootFull = Path.GetFullPath(SourcesRoot);
+            if (!full.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)) return null;
+            return File.Exists(full) ? File.ReadAllBytes(full) : null;
+        }
+        catch { return null; }
     }
 
     private static Dictionary<string, Dictionary<string, string>> Load()

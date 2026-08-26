@@ -52,6 +52,7 @@ public partial class PluginManagerViewModel : ObservableObject
                     HasConfig = (manifest?.ConfigFields?.Count ?? 0) > 0,
                     CapabilityText = CapabilityTextOf(manifest),
                     IsEnabled = hub.IsSourceEnabled(dir),
+                    IconBytes = hub.GetIconBytes(dir),
                 });
                 any = true;
             }
@@ -96,7 +97,8 @@ public partial class PluginManagerViewModel : ObservableObject
                     [DevicePlatform.iOS] = new[] { "public.zip-archive" },
                     [DevicePlatform.MacCatalyst] = new[] { "public.zip-archive" },
                 }),
-            }).ConfigureAwait(false);
+                // 不用 ConfigureAwait(false)：后续更新绑定集合/状态必须回到 UI 线程
+            });
             if (result == null) return;
 
             IsBusy = true;
@@ -170,6 +172,8 @@ public partial class PluginSourceItem : ObservableObject
     public string Status { get; set; } = string.Empty;
     public string CapabilityText { get; set; } = string.Empty;
     public bool HasConfig { get; set; }
+    /// <summary>插件图标原始字节（manifest.icon 指向的图片）；null 用默认占位。</summary>
+    public byte[]? IconBytes { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ToggleText))]

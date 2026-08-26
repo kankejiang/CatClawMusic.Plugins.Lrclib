@@ -84,7 +84,10 @@ public class BatchReplayGainPage : ContentPage
                 HorizontalOptions = LayoutOptions.End,
             };
             status.SetBinding(Label.TextProperty, nameof(BatchResultItem.Status));
-            status.SetBinding(Label.TextColorProperty, new Binding(nameof(BatchResultItem.StatusColor)));
+            status.SetBinding(Label.TextColorProperty, new Binding(nameof(BatchResultItem.StatusColor))
+            {
+                Converter = new HexToColorConverter(),   // hex 字符串 → Color，缺省则绑定静默失败
+            });
 
             var grid = new Grid
             {

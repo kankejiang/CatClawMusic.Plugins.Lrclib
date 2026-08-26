@@ -73,12 +73,21 @@ public sealed class LyricoLyricsHub : IDisposable
         double durationSeconds, CancellationToken ct = default)
     {
         EnsureInitialized();
-        if (_hosts.Count == 0) return null;
 
-        foreach (var (plugin, host) in _hosts)
+        // 锁内快照：Delete/Refresh 可在 UI 线程并发增删 _hosts/_disabled，直接 foreach 会枚举器失效
+        List<(string Plugin, LyricoScriptHost Host)> snapshot;
+        lock (_initLock)
+        {
+            snapshot = new List<(string, LyricoScriptHost)>(_hosts.Count);
+            foreach (var (plugin, host) in _hosts)
+                if (!_disabled.Contains(plugin))
+                    snapshot.Add((plugin, host));
+        }
+        if (snapshot.Count == 0) return null;
+
+        foreach (var (plugin, host) in snapshot)
         {
             if (ct.IsCancellationRequested) return null;
-            if (_disabled.Contains(plugin)) continue;  // 用户禁用的源跳过
             try
             {
                 var candidates = await host.GetLyricsAsync(
@@ -250,7 +259,9 @@ public sealed class LyricoLyricsHub : IDisposable
         string? album, double durationSeconds, CancellationToken ct = default)
     {
         EnsureInitialized();
-        if (!_hosts.TryGetValue(dir, out var host)) return null;
+        LyricoScriptHost? host;
+        lock (_initLock)
+            if (!_hosts.TryGetValue(dir, out host)) return null;
         try
         {
             var candidates = await host.GetLyricsAsync(
@@ -264,6 +275,53 @@ public sealed class LyricoLyricsHub : IDisposable
         }
     }
 
+    /// <summary>
+    /// 多源歌词搜索：对全部启用源并行调用 getLyrics，返回每个命中源的最优歌词
+    /// （源目录名 + 显示名 + 歌词）。供歌词搜索页"同时显示多个来源"使用。
+    /// </summary>
+    public async Task<List<(string Dir, string Name, LrcLyrics Lyrics)>> SearchAllSourcesAsync(
+        string title, string artist, string? album, double durationSeconds, CancellationToken ct = default)
+    {
+        EnsureInitialized();
+        List<(string Dir, LyricoScriptHost Host)> snapshot;
+        lock (_initLock)
+        {
+            snapshot = new List<(string, LyricoScriptHost)>(_hosts.Count);
+            foreach (var kv in _hosts)
+                if (!_disabled.Contains(kv.Key))
+                    snapshot.Add((kv.Key, kv.Value));
+        }
+        if (snapshot.Count == 0) return new List<(string, string, LrcLyrics)>();
+
+        var tasks = snapshot.Select(entry => SearchOneAsync(entry.Dir, entry.Host, title, artist, album, durationSeconds, ct)).ToList();
+
+        var settled = await Task.WhenAll(tasks).ConfigureAwait(false);
+        var result = new List<(string Dir, string Name, LrcLyrics)>();
+        foreach (var r in settled)
+        {
+            if (r == null) continue;
+            var manifest = _catalog.GetManifest(r.Value.Dir);
+            var name = string.IsNullOrWhiteSpace(manifest?.Name) ? r.Value.Dir : manifest!.Name;
+            result.Add((r.Value.Dir, name, r.Value.Lyrics));
+        }
+        return result;
+    }
+
+    /// <summary>单源搜索（显式返回类型，避免 async lambda 三元推断失败）。</summary>
+    private static async Task<(string Dir, LrcLyrics Lyrics)?> SearchOneAsync(
+        string dir, LyricoScriptHost host, string title, string artist, string? album,
+        double durationSeconds, CancellationToken ct)
+    {
+        try
+        {
+            var candidates = await host.GetLyricsAsync(
+                title, artist, album ?? "", (long)(durationSeconds * 1000), ct).ConfigureAwait(false);
+            var best = PickBest(candidates, title, durationSeconds);
+            return best == null ? null : (dir, best);
+        }
+        catch { return null; }
+    }
+
     /// <summary>取某源插件的 manifest（含 ConfigFields，供配置页渲染表单）。</summary>
     public LyricoManifest? GetManifest(string dir)
     {
@@ -275,6 +333,15 @@ public sealed class LyricoLyricsHub : IDisposable
     /// UI 保存后应调用 <see cref="Refresh"/> 使运行中的脚本宿主重载配置。</summary>
     public LyricoSourceConfigStore GetConfigStore(string dir)
         => new LyricoSourceConfigStore(dir);
+
+    /// <summary>取某源插件的图标字节（图片原始字节，供 UI 显示）。无图标返回 null。</summary>
+    public byte[]? GetIconBytes(string dir)
+    {
+        EnsureInitialized();
+        var manifest = _catalog.GetManifest(dir);
+        if (manifest == null || string.IsNullOrWhiteSpace(manifest.Icon)) return null;
+        return _catalog.GetIconBytes(dir, manifest.Icon);
+    }
 
     // ── 源启停（临时禁用某源，不卸载）──
 

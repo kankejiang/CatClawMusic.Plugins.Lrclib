@@ -1,3 +1,4 @@
+using CatClawMusic.Core.Interfaces;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 using Microsoft.Maui.Layouts;
@@ -12,7 +13,19 @@ namespace CatClawMusic.Plugins.Lrclib;
 /// </summary>
 public class MusicLibraryPage : ContentPage
 {
+    private static MusicLibraryViewModel? _sharedVm;
+    private static WeakReference<MusicLibraryPage>? _lastPageRef;
+
+    /// <summary>获取插件级共享 VM（ArtistSplitStore.AnyChanged 是静态事件，VM 单例化避免每次进入入口页都追加订阅造成泄漏）。</summary>
+    public static MusicLibraryViewModel GetSharedViewModel(IMusicLibraryService library)
+        => _sharedVm ??= new MusicLibraryViewModel(library);
+
     private readonly MusicLibraryViewModel _vm;
+
+    /// <summary>解除与共享 VM 的PropertyChanged 订阅（宿主每次点入口都会新建页面，
+    /// 共享 VM 的调用列表会钉住旧页面树；新建前主动释放上一页）。</summary>
+    private void DetachFromSharedVm()
+        => _vm.PropertyChanged -= OnVmPropertyChanged;
     private CollectionView? _songsView;
     private CollectionView? _albumsView;
     private CollectionView? _artistsView;
@@ -40,6 +53,11 @@ public class MusicLibraryPage : ContentPage
         _vm = vm;
         BindingContext = _vm;
 
+        // 释放上一页对共享 VM 的订阅，防止静态 VM 调用列表钉住旧页面树
+        if (_lastPageRef?.TryGetTarget(out var old) == true && !ReferenceEquals(old, this))
+            old.DetachFromSharedVm();
+        _lastPageRef = new WeakReference<MusicLibraryPage>(this);
+
         Title = "Lyrico";
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
 
@@ -62,6 +80,7 @@ public class MusicLibraryPage : ContentPage
         };
         _contentArea = contentArea;
         _loadingIndicator.IsRunning = true;
+        _loadingIndicator.IsVisible = false;   // 由 IsLoading 绑定控制显隐，构造期不显示空转指示器
         _loadingIndicator.VerticalOptions = LayoutOptions.Center;
         _loadingIndicator.HorizontalOptions = LayoutOptions.Center;
         _loadingIndicator.SetDynamicResource(ActivityIndicator.ColorProperty, "PrimaryColor");
@@ -228,9 +247,10 @@ public class MusicLibraryPage : ContentPage
         {
             var songs = GetSelectedSongs();
             if (songs.Count == 0) return;
-            var confirm = await Shell.Current?.DisplayAlert("删除确认",
+            // 用页面实例 DisplayAlert（桌面宿主无 Shell，Shell.Current 为 null 时 await null 会 NRE）
+            var confirm = await DisplayAlert("删除确认",
                 $"确定删除选中的 {songs.Count} 首文件吗？此操作不可恢复。", "删除", "取消");
-            if (confirm == true)
+            if (confirm)
                 await PluginNav.PushAsync(new BatchOperationsPage(songs, BatchOperationMode.DeleteFiles));
         });
         var batchFormat = MakeBatchButton("批量歌词格式", async () =>
@@ -324,6 +344,8 @@ public class MusicLibraryPage : ContentPage
                 _songsView.SelectionMode = SelectionMode.Single;
                 _songsView.SelectedItems = null;
                 _batchBar.IsVisible = false;
+                // 退出多选后恢复歌曲 Tab 的字母侧栏（进入时被隐藏）
+                if (_vm.ActiveTab == 0) RebuildLetterRail();
             }
         }
 
@@ -336,12 +358,16 @@ public class MusicLibraryPage : ContentPage
         _selectionCountLabel.Text = _selectionMode ? $"已选 {n} 首" : "";
     }
 
+    /// <summary>是否已完成过首次全量加载（防止搜索空结果时误判而重复整库加载）。</summary>
+    private bool _firstLoadDone;
+
     protected override async void OnAppearing()
     {
         base.OnAppearing();
         // 延迟到 Push 动画结束后再加载，避免导航动画期间与数据加载争抢 UI 线程导致 ANR。
-        if (!_vm.IsLoading && _vm.SongGroups.Count == 0)
+        if (!_firstLoadDone && !_vm.IsLoading)
         {
+            _firstLoadDone = true;
             try { await Task.Delay(150); } catch { }
             _vm.LoadCommand.Execute(null);
         }
@@ -887,6 +913,8 @@ public class MusicLibraryPage : ContentPage
         _tabFolders.BackgroundColor = tab == 3 ? primary : Colors.Transparent;
 
         RebuildLetterRail();
+        // 多选模式期间侧栏保持隐藏（RebuildLetterRail 会无条件重新显示）
+        if (_selectionMode) _letterRail.IsVisible = false;
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)

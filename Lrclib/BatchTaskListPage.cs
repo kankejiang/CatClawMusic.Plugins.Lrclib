@@ -28,7 +28,7 @@ public class BatchTaskListPage : ContentPage
             TextColor = Colors.White,
             CornerRadius = 14,
         };
-        clearButton.Clicked += (_, _) => ClearHistory();
+        clearButton.Clicked += ClearHistory;
 
         var header = new Grid
         {
@@ -59,15 +59,18 @@ public class BatchTaskListPage : ContentPage
         empty.Margin = new Thickness(0, 20, 0, 0);
         _emptyLabel = empty;
 
-        Content = new Grid
+        var root = new Grid
         {
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
-            Children = { header, _list, empty },
         };
+        root.Add(header, 0, 0);
+        root.Add(_list, 0, 1);
+        root.Add(empty, 0, 1);   // 与列表同行，互斥显示
+        Content = root;
     }
 
     private readonly Label _emptyLabel;
@@ -85,14 +88,13 @@ public class BatchTaskListPage : ContentPage
         _emptyLabel.IsVisible = _records.Count == 0;
     }
 
-    private async void ClearHistory()
+    private async void ClearHistory(object? sender, EventArgs e)
     {
-        var ok = await Shell.Current?.DisplayAlert("清空历史", "确定删除全部批量任务历史记录？", "清空", "取消");
-        if (ok == true)
-        {
-            BatchTaskStore.Clear();
-            Reload();
-        }
+        // 页面实例方法 DisplayAlert（桌面宿主无 Shell，Shell.Current 为 null）
+        var ok = await DisplayAlert("清空历史", "确定删除全部批量任务历史记录？", "清空", "取消");
+        if (!ok) return;
+        await Task.Run(() => BatchTaskStore.Clear());
+        Reload();
     }
 
     private View BuildRow()

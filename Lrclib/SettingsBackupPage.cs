@@ -31,11 +31,12 @@ public class SettingsBackupPage : ContentPage
         _backupPath.Placeholder = "导出路径（如 D:\\lrclib_backup.zip）";
         BindEntry(_backupPath);
         var backupButton = MakeButton("导出备份", Colors.White, true);
-        backupButton.Clicked += (_, _) =>
+        backupButton.Clicked += async (_, _) =>
         {
             var p = _backupPath.Text?.Trim();
             if (string.IsNullOrEmpty(p)) { _status.Text = "请填写导出路径"; return; }
-            var n = SettingsBackupService.Backup(p);
+            _status.Text = "导出中…";
+            var n = await Task.Run(() => SettingsBackupService.Backup(p));
             _status.Text = n >= 0 ? $"已导出 {n} 个配置文件到 {p}" : "导出失败（路径不可写？）";
         };
 
@@ -48,10 +49,12 @@ public class SettingsBackupPage : ContentPage
         {
             var p = _restorePath.Text?.Trim();
             if (string.IsNullOrEmpty(p)) { _status.Text = "请填写备份文件路径"; return; }
-            var confirm = await Shell.Current?.DisplayAlert("确认恢复",
+            // 页面实例 DisplayAlert（桌面宿主无 Shell）
+            var confirm = await DisplayAlert("确认恢复",
                 "恢复会覆盖当前所有插件配置，确定继续吗？", "恢复", "取消");
-            if (confirm != true) return;
-            var (count, detail) = SettingsBackupService.Restore(p);
+            if (!confirm) return;
+            _status.Text = "恢复中…";
+            var (count, detail) = await Task.Run(() => SettingsBackupService.Restore(p));
             _status.Text = count >= 0 ? $"恢复完成：{detail}" : detail;
         };
 

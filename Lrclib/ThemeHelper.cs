@@ -185,3 +185,109 @@ internal static class UiExt
         return self;
     }
 }
+
+/// <summary>
+/// 全面屏安全区适配：把系统栏 insets（状态栏/导航栏）叠加到页面根布局的 Padding 上，
+/// 避免顶部控件侵入状态栏、底部控件被手势条遮挡。
+/// <para>实现：反射读取宿主 <c>CatClawMusic.Maui.SafeAreaHelper</c> 的 TopInset/BottomInset
+/// （宿主平台回调驱动的权威值，宿主自身页面同源）；取不到时 Android 以 24dp 兜底。
+/// 不用 SafeAreaEdges——实测宿主 EdgeToEdge 环境下 Container 不生效。</para>
+/// </summary>
+internal static class SafeAreaExt
+{
+    private const double AndroidFallbackTopDp = 24;
+
+    /// <summary>给页面根布局叠加安全区 Padding。幂等（以调用时原始 Padding 为基准），可重复调用。</summary>
+    public static Page AttachSafeArea(this ContentPage page)
+    {
+        if (page.Content is not Layout root) return page;
+        var originalPadding = root.Padding;
+
+        void Apply()
+        {
+            var (top, bottom) = SafeAreaInsetsProvider.GetInsets();
+            var target = new Thickness(
+                originalPadding.Left,
+                originalPadding.Top + top,
+                originalPadding.Right,
+                originalPadding.Bottom + bottom);
+            if (root.Padding != target) root.Padding = target;
+        }
+
+        void OnHandlerChanged(object? s, EventArgs e)
+        {
+            if (page.Handler != null)
+            {
+                SafeAreaInsetsProvider.InsetsChanged += Apply;   // 横竖屏/系统栏变化跟随
+                Apply();
+            }
+            else
+            {
+                SafeAreaInsetsProvider.InsetsChanged -= Apply;   // 页面脱离可视树后停止响应
+            }
+        }
+
+        page.HandlerChanged += OnHandlerChanged;
+        return page;
+    }
+}
+
+/// <summary>
+/// 安全区 insets 数据源：反射桥接宿主 <c>CatClawMusic.Maui.SafeAreaHelper</c>
+/// （静态 TopInset/BottomInset + SafeAreaChanged 事件，由宿主平台代码在系统栏变化时更新）。
+/// 宿主不可用时 Android 返回 24dp 兜底、其余平台 0。
+/// </summary>
+internal static class SafeAreaInsetsProvider
+{
+    /// <summary>insets 变化通知（UI 线程触发）。</summary>
+    public static event Action? InsetsChanged;
+
+    private const double AndroidFallbackTopDp = 24;
+    private static bool _tried;
+    private static Func<(double Top, double Bottom)>? _getter;
+
+    public static (double Top, double Bottom) GetInsets()
+    {
+        TryInit();
+        if (_getter != null)
+        {
+            try
+            {
+                var (top, bottom) = _getter();
+                if (DeviceInfo.Platform == DevicePlatform.Android && top < 1) top = AndroidFallbackTopDp;
+                return (Math.Max(0, top), Math.Max(0, bottom));
+            }
+            catch { }
+        }
+        return (DeviceInfo.Platform == DevicePlatform.Android ? AndroidFallbackTopDp : 0, 0);
+    }
+
+    private static void TryInit()
+    {
+        if (_tried) return;
+        _tried = true;
+        try
+        {
+            var asm = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(a =>
+                string.Equals(a.GetName().Name, "CatClawMusic.Maui", StringComparison.OrdinalIgnoreCase));
+            var type = asm?.GetType("CatClawMusic.Maui.SafeAreaHelper");
+            if (type == null) return;
+
+            var propTop = type.GetProperty("TopInset");
+            var propBottom = type.GetProperty("BottomInset");
+            var evt = type.GetEvent("SafeAreaChanged");
+            if (propTop == null || propBottom == null || evt == null) return;
+
+            _getter = () =>
+                ((double)(propTop.GetValue(null) ?? 0d),
+                 (double)(propBottom.GetValue(null) ?? 0d));
+
+            EventHandler bridge = (_, _) => MainThread.BeginInvokeOnMainThread(() =>
+            {
+                try { InsetsChanged?.Invoke(); } catch { }
+            });
+            evt.AddEventHandler(null, bridge);
+        }
+        catch { }
+    }
+}

@@ -192,8 +192,13 @@ public class BatchOperationsPage : ContentPage
     // ── 批量删除：红色警示 + 删除按钮 ──
     private View BuildDeleteArea()
     {
-        var hint = NewLabel(13, FontAttributes.None, "TextPrimaryColor", "#F87171", tail: false);
-        hint.Text = "将永久删除所选音频文件，此操作不可恢复。请确认后继续。";
+        // 危险警示固定红色（NewLabel 的 DynamicResource 键机制不适用单点回退色）
+        var hint = new Label
+        {
+            Text = "将永久删除所选音频文件，此操作不可恢复。请确认后继续。",
+            FontSize = 13,
+            TextColor = Color.FromArgb("#F87171"),
+        };
 
         var run = new Button
         {

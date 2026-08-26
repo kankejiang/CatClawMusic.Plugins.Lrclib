@@ -70,14 +70,22 @@ public partial class BatchLyricsFormatViewModel : ObservableObject
                 .Select(k => k.Trim()).Where(k => k.Length > 0).ToList()
             : null;
 
-        foreach (var song in Songs)
+        try
         {
-            Results.Add(await ConvertOneAsync(song, target, RemoveEmptyLines, tagKws));
-            DoneCount++;
-            ProgressText = $"{DoneCount}/{Songs.Count} · {song.Title}";
+            foreach (var song in Songs)
+            {
+                Results.Add(await ConvertOneAsync(song, target, RemoveEmptyLines, tagKws));
+                DoneCount++;
+                ProgressText = $"{DoneCount}/{Songs.Count} · {song.Title}";
+            }
+        }
+        finally
+        {
+            // finally 保护：任何逃逸异常也不至于让按钮永久禁用
+            IsRunning = false;
+            CanRun = true;
         }
 
-        IsRunning = false;
         HasResults = true;
         ProgressText = $"完成 {DoneCount}/{Songs.Count}";
     }

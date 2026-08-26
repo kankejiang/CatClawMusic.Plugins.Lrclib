@@ -1,18 +1,24 @@
 using CatClawMusic.Core.Interfaces;
+using CatClawMusic.Core.Models;
+using CatClawMusic.Plugins.Lrclib.Lyrico;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
+using System.Text;
 
 namespace CatClawMusic.Plugins.Lrclib;
 
 /// <summary>
 /// 歌词搜索补全 ViewModel（Lyrico SearchLyrics 复刻）：
-/// 按歌名/艺人搜 LRCLIB → 候选列表 → 底部预览 → 「写入标签」把歌词写进音频文件内嵌歌词。
+/// 按歌名/艺人搜 LRCLIB 候选列表 + 底部预览 + 「写入标签」把歌词写进音频文件内嵌歌词。
+/// LRCLIB 之外同时并行搜索已导入的 Lyrico 多源（netease/qq/kugou/soda/apple…），
+/// 每个命中源以「源名」徽标追加进候选列表，与 Lyrico 多源同显。
 /// </summary>
 public partial class SearchLyricsViewModel : ObservableObject
 {
     private readonly LrclibApiClient _client;
     private readonly IAudioFileService? _audio;
+    private readonly LyricoLyricsHub? _lyricoHub;
 
     public SongItem Song { get; }
 
@@ -37,14 +43,19 @@ public partial class SearchLyricsViewModel : ObservableObject
 
     public ObservableCollection<CandidateItem> Candidates { get; } = new();
 
-    public SearchLyricsViewModel(SongItem song, LrclibApiClient client, IAudioFileService? audio)
+    public SearchLyricsViewModel(SongItem song, LrclibApiClient client, IAudioFileService? audio,
+        LyricoLyricsHub? lyricoHub = null)
     {
         Song = song;
         _client = client;
         _audio = audio;
+        _lyricoHub = lyricoHub;
         SearchTitle = song.Title;
         SearchArtist = song.Artist;
     }
+
+    /// <summary>搜索世代号：防止上一轮 Lyrico 扇出的迟到结果混入新一轮候选。</summary>
+    private int _searchGeneration;
 
     [RelayCommand]
     private async Task SearchAsync()
@@ -54,27 +65,90 @@ public partial class SearchLyricsViewModel : ObservableObject
         IsBusy = true;
         StatusText = "搜索中...";
         Candidates.Clear();
+        var generation = ++_searchGeneration;
+        var title = SearchTitle.Trim();
+        var artist = string.IsNullOrWhiteSpace(SearchArtist) ? null : SearchArtist.Trim();
+        var lrclibFound = 0;
         try
         {
-            var artist = string.IsNullOrWhiteSpace(SearchArtist) ? null : SearchArtist.Trim();
-            var results = await _client.SearchAsync(SearchTitle.Trim(), artist);
-            if (results == null || results.Count == 0)
+            var results = await _client.SearchAsync(title, artist);
+            if (results != null)
             {
-                StatusText = "未找到候选（LRCLIB 未收录或歌名不匹配）";
-                return;
+                lrclibFound = results.Count;
+                foreach (var t in results.Take(50))
+                    Candidates.Add(new CandidateItem(t));
+                if (results.Count > 0)
+                    StatusText = $"LRCLIB：{results.Count} 个候选 · Lyrico 源匹配中…";
             }
-            foreach (var t in results.Take(50))
-                Candidates.Add(new CandidateItem(t));
-            StatusText = $"找到 {results.Count} 个候选，点卡片预览歌词";
         }
         catch
         {
-            StatusText = "搜索失败（网络不可用？）";
+            StatusText = "LRCLIB 搜索失败（网络不可用？）";
         }
         finally
         {
             IsBusy = false;
         }
+
+        if (lrclibFound == 0)
+            StatusText = "LRCLIB 未收录，正在搜索 Lyrico 多源…";
+
+        // 同时搜索已导入的 Lyrico 多源（netease/qq/kugou/soda/apple…），命中以源名徽标逐个追加
+        _ = SearchLyricoSourcesAsync(generation, title, artist);
+    }
+
+    /// <summary>并行搜索全部启用的 Lyrico 源，命中者以源名徽标追加进候选列表（与 LRCLIB 同显）。</summary>
+    private async Task SearchLyricoSourcesAsync(int generation, string title, string? artist)
+    {
+        var hub = _lyricoHub;
+        if (hub == null) return;
+
+        // 宿主 Duration 存在秒/毫秒单位不一致，沿用 >1000 视为毫秒的防御判断
+        var duration = Song.Song.Duration > 1000 ? Song.Song.Duration / 1000.0 : Song.Song.Duration;
+        try
+        {
+            var hits = await hub.SearchAllSourcesAsync(title, artist, null, duration);
+            if (generation != _searchGeneration) return;   // 期间用户又发起了新搜索，丢弃本轮
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (generation != _searchGeneration) return;
+                foreach (var (dir, name, lyrics) in hits)
+                {
+                    var item = ToCandidate(name, lyrics, title, artist);
+                    if (item != null) Candidates.Add(item);
+                }
+                if (hits.Count > 0)
+                    StatusText = $"共 {Candidates.Count} 个候选（Lyrico 命中 {hits.Count} 个源），点卡片预览歌词";
+                else if (Candidates.Count == 0)
+                    StatusText = "LRCLIB 与 Lyrico 源均未找到候选";
+            });
+        }
+        catch { }
+    }
+
+    /// <summary>Lyrico 源歌词 → 候选项（渲染为带时间戳 LRC 文本，复用预览/写标签管线）。</summary>
+    private static CandidateItem? ToCandidate(string sourceName, LrcLyrics lyrics, string title, string? artist)
+    {
+        if (lyrics.Lines.Count == 0) return null;
+        var sb = new StringBuilder();
+        foreach (var line in lyrics.Lines)
+        {
+            var t = line.Timestamp;
+            sb.Append($"[{(int)t.TotalMinutes:D2}:{t.Seconds:D2}.{t.Milliseconds:D3}]")
+              .Append(line.Text)
+              .Append('\n');
+        }
+        if (sb.Length == 0) return null;
+
+        var track = new LrclibTrack
+        {
+            TrackName = string.IsNullOrWhiteSpace(lyrics.Metadata?.Title) ? title : lyrics.Metadata!.Title,
+            ArtistName = string.IsNullOrWhiteSpace(lyrics.Metadata?.Artist) ? (artist ?? "") : lyrics.Metadata!.Artist,
+            AlbumName = lyrics.Metadata?.Album,
+            SyncedLyrics = sb.ToString(),
+        };
+        return new CandidateItem(track) { SourceTag = sourceName };
     }
 
     [RelayCommand]

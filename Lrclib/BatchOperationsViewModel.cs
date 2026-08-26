@@ -118,6 +118,7 @@ public partial class BatchOperationsViewModel : ObservableObject
         finally
         {
             IsRunning = false;
+            CanRun = true;   // 恢复执行按钮，否则一次执行后永久禁用
         }
 
         HasResults = true;

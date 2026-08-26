@@ -169,7 +169,8 @@ public partial class ManualMatchViewModel : ObservableObject
                     [DevicePlatform.iOS] = new[] { "public.zip-archive" },
                     [DevicePlatform.MacCatalyst] = new[] { "public.zip-archive" },
                 }),
-            }).ConfigureAwait(false);
+                // 不用 ConfigureAwait(false)：后续更新绑定集合/状态必须回到 UI 线程
+            });
             if (result == null) return;
 
             SourceStatusText = "导入中…";
@@ -257,10 +258,14 @@ public class CandidateItem
         }
     }
 
-    /// <summary>歌词形态徽标：同步歌词 / 纯文本 / 无歌词</summary>
-    public string Badge => !string.IsNullOrWhiteSpace(Track.SyncedLyrics)
-        ? "同步歌词"
-        : !string.IsNullOrWhiteSpace(Track.PlainLyrics) ? "纯文本" : "无歌词";
+    /// <summary>来源徽标覆盖（Lyrico 多源结果设为源名；LRCLIB 候选为 null 走默认判定）</summary>
+    public string? SourceTag { get; set; }
+
+    /// <summary>歌词形态徽标：源名 / 同步歌词 / 纯文本 / 无歌词</summary>
+    public string Badge => SourceTag
+        ?? (!string.IsNullOrWhiteSpace(Track.SyncedLyrics)
+            ? "同步歌词"
+            : !string.IsNullOrWhiteSpace(Track.PlainLyrics) ? "纯文本" : "无歌词");
 
     /// <summary>无歌词的候选不可保存</summary>
     public bool CanSave => !string.IsNullOrWhiteSpace(Track.SyncedLyrics) || !string.IsNullOrWhiteSpace(Track.PlainLyrics);

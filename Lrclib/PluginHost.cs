@@ -64,7 +64,21 @@ internal static class PluginNav
 
     public static async Task PushAsync(Page page)
     {
-        // 有 Shell（Android）：走宿主导航栈，行为不变。
+        if (page is ContentPage cp)
+        {
+            if (TryGetShellNavigation() != null)
+            {
+                // Android Shell 路径：宿主隐藏导航栏 → 注入返回头 + 安全区
+                AddBackHeader(cp);
+                cp.AttachSafeArea();
+            }
+            else
+            {
+                // 桌面/无 Shell：WrapRoot 提供返回头，这里只做安全区
+                cp.AttachSafeArea();
+            }
+        }
+
         if (TryGetShellNavigation() is { } shellNav)
         {
             await shellNav.PushAsync(page);
@@ -79,7 +93,9 @@ internal static class PluginNav
         {
             // 首个被压入的页面是 NavigationPage 根，系统不会为根绘制返回箭头；
             // 故用带统一返回按钮的包装页承载其内容，保证能返回主界面。
-            _modalRoot = new NavigationPage(page is ContentPage cp ? WrapRoot(cp) : page);
+            var rootPage = page is ContentPage rootContent ? WrapRoot(rootContent) : page;
+            if (rootPage is ContentPage rootCp) rootCp.AttachSafeArea();   // 包装页返回头同样避让状态栏
+            _modalRoot = new NavigationPage(rootPage);
             await main.Navigation.PushModalAsync(_modalRoot);
         }
         else
@@ -152,5 +168,70 @@ internal static class PluginNav
 
         if (TryGetShellNavigation() is { } shellNav && shellNav.NavigationStack.Count > 0)
             await shellNav.PopAsync();
+    }
+
+    /// <summary>
+    /// 给页面注入返回按钮头（Android Shell 路径专用——宿主隐藏导航栏时页面无系统返回箭头）。
+    /// 把原 Content 包进外层 Grid：第 0 行 = ‹ 返回键 + 页面标题，第 1 行 = 原内容。
+    /// 随后的 AttachSafeArea 会作用于外层根，返回头自动避让状态栏。
+    /// </summary>
+    private static void AddBackHeader(ContentPage page)
+    {
+        if (page.Content is not Layout inner) return;
+        if (inner is Grid g && g.ClassId == "plugin-nav-wrap") return;   // 幂等保护
+
+        var back = new Border
+        {
+            WidthRequest = 40,
+            HeightRequest = 32,
+            StrokeThickness = 0,
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = new CornerRadius(10) },
+            BackgroundColor = ThemeHelper.Color("CardBackgroundColor", "#1AFFFFFF"),
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Center,
+            Margin = new Thickness(10, 2, 0, 2),
+            Content = new Label
+            {
+                Text = "‹",
+                FontSize = 20,
+                FontAttributes = FontAttributes.Bold,
+                TextColor = ThemeHelper.Color("TextPrimaryColor", "#F7F8FF"),
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalOptions = LayoutOptions.Center,
+            },
+        };
+        back.GestureRecognizers.Add(new TapGestureRecognizer
+        {
+            Command = new Command(async () =>
+            {
+                try { await PopAsync(); } catch { }
+            }),
+        });
+
+        var title = ThemeHelper.Label(15, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", true);
+        title.Text = page.Title ?? string.Empty;
+        title.VerticalOptions = LayoutOptions.Center;
+        title.Margin = new Thickness(8, 0, 0, 0);
+
+        var header = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
+            },
+            Padding = new Thickness(0, 2, 12, 2),
+        };
+        header.Add(back, 0, 0);
+        header.Add(title, 1, 0);
+
+        var outer = new Grid
+        {
+            ClassId = "plugin-nav-wrap",
+            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Star) },
+        };
+        outer.Add(header, 0, 0);
+        outer.Add(inner, 0, 1);
+        page.Content = outer;
     }
 }

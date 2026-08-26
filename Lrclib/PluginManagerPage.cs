@@ -54,7 +54,7 @@ public class PluginManagerPage : ContentPage
         };
         list.SetBinding(CollectionView.ItemsSourceProperty, nameof(PluginManagerViewModel.Sources));
 
-        Content = new Grid
+        var root = new Grid
         {
             RowDefinitions =
             {
@@ -63,8 +63,12 @@ public class PluginManagerPage : ContentPage
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
-            Children = { hint, importButton, status, list },
         };
+        root.Add(hint, 0, 0);
+        root.Add(importButton, 0, 1);
+        root.Add(status, 0, 2);
+        root.Add(list, 0, 3);
+        Content = root;
     }
 
     protected override void OnAppearing()
@@ -74,9 +78,33 @@ public class PluginManagerPage : ContentPage
         _vm.RefreshSources();
     }
 
-    /// <summary>源插件行：名称 + 能力 · 目录 + 按钮组。</summary>
+    /// <summary>源插件行：图标 + 名称 + 能力 · 目录 + 按钮组。</summary>
     private View BuildSourceRow()
     {
+        // 图标：manifest.icon 指向的图片覆盖在音符占位上；无图标时占位透出。
+        var placeholder = new Label
+        {
+            Text = "♪",
+            FontSize = 18,
+            TextColor = ThemeHelper.Color("PrimaryColor", "#8C7BFF"),
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+        };
+        var iconImage = new Image { WidthRequest = 38, HeightRequest = 38, Aspect = Aspect.AspectFill };
+        iconImage.SetBinding(Image.SourceProperty, new Binding(nameof(PluginSourceItem.IconBytes))
+        {
+            Converter = IconBytesToSourceConverter.Instance,
+        });
+        var icon = new Border
+        {
+            WidthRequest = 38,
+            HeightRequest = 38,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 9 },
+            BackgroundColor = ThemeHelper.Color("PrimaryColor", "#8C7BFF").WithAlpha(0.25f),
+            Content = new Grid { Children = { placeholder, iconImage } },
+        };
+
         var name = ThemeHelper.Label(15, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", true);
         name.SetBinding(Label.TextProperty, nameof(PluginSourceItem.Name));
 
@@ -93,7 +121,6 @@ public class PluginManagerPage : ContentPage
         toggle.SetBinding(Button.TextProperty, nameof(PluginSourceItem.ToggleText));
         var test = MakeButton("测试", nameof(PluginManagerViewModel.OpenTestCommand));
         var deleteBtn = MakeButton("卸载", nameof(PluginManagerViewModel.DeleteSourceCommand));
-
         var text = new VerticalStackLayout
         {
             VerticalOptions = LayoutOptions.Center,
@@ -106,19 +133,23 @@ public class PluginManagerPage : ContentPage
         var row = new Grid
         {
             Padding = new Thickness(8, 6),
+            ColumnSpacing = 10,
             ColumnDefinitions =
             {
+                new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Auto),
             },
         };
-        row.Add(text, 0);
-        row.Add(buttons, 1);
+        row.Add(icon, 0);
+        row.Add(text, 1);
+        row.Add(buttons, 2);
 
         return LyricoUi.Card(row);
     }
 
-    private static Button MakeButton(string? text, string command)
+    /// <summary>操作按钮：命令绑定必须显式 source 到页面 VM（DataTemplate 行内 BindingContext 是条目对象）。</summary>
+    private Button MakeButton(string? text, string command)
     {
         var b = new Button
         {
@@ -129,7 +160,7 @@ public class PluginManagerPage : ContentPage
             TextColor = Colors.White,
             CornerRadius = 14,
         };
-        b.SetBinding(Button.CommandProperty, command);
+        b.SetBinding(Button.CommandProperty, new Binding(command, source: _vm));
         b.SetBinding(Button.CommandParameterProperty, new Binding("."));
         return b;
     }

@@ -180,7 +180,8 @@ public class ManualMatchPage : ContentPage
         badgeLabel.SetDynamicResource(Label.TextColorProperty, "TextSecondaryColor");
 
         var saveButton = new Button { Text = "使用此歌词", FontSize = 13, Padding = new Thickness(10, 4) };
-        saveButton.SetBinding(Button.CommandProperty, nameof(ManualMatchViewModel.SaveOverrideCommand));
+        saveButton.SetBinding(Button.CommandProperty,
+            new Binding(nameof(ManualMatchViewModel.SaveOverrideCommand), source: _vm));
         saveButton.SetBinding(Button.CommandParameterProperty, new Binding("."));
         saveButton.SetBinding(Button.IsEnabledProperty, nameof(CandidateItem.CanSave));
 
@@ -218,7 +219,8 @@ public class ManualMatchPage : ContentPage
         subtitleLabel.SetBinding(Label.TextProperty, nameof(OverrideItem.Subtitle));
 
         var removeButton = new Button { Text = "删除", FontSize = 13, Padding = new Thickness(10, 4) };
-        removeButton.SetBinding(Button.CommandProperty, nameof(ManualMatchViewModel.RemoveOverrideCommand));
+        removeButton.SetBinding(Button.CommandProperty,
+            new Binding(nameof(ManualMatchViewModel.RemoveOverrideCommand), source: _vm));
         removeButton.SetBinding(Button.CommandParameterProperty, new Binding("."));
 
         var textStack = new VerticalStackLayout
@@ -255,21 +257,25 @@ public class ManualMatchPage : ContentPage
         dirLabel.SetBinding(Label.TextProperty, nameof(LyricoSourceItem.Dir));
 
         var configButton = new Button { Text = "配置", FontSize = 13, Padding = new Thickness(10, 4) };
-        configButton.SetBinding(Button.CommandProperty, nameof(ManualMatchViewModel.OpenSourceConfigCommand));
+        configButton.SetBinding(Button.CommandProperty,
+            new Binding(nameof(ManualMatchViewModel.OpenSourceConfigCommand), source: _vm));
         configButton.SetBinding(Button.CommandParameterProperty, new Binding("."));
         configButton.SetBinding(Button.IsVisibleProperty, nameof(LyricoSourceItem.HasConfig));
 
         var toggleButton = new Button { FontSize = 13, Padding = new Thickness(10, 4) };
-        toggleButton.SetBinding(Button.CommandProperty, nameof(ManualMatchViewModel.ToggleSourceEnabledCommand));
+        toggleButton.SetBinding(Button.CommandProperty,
+            new Binding(nameof(ManualMatchViewModel.ToggleSourceEnabledCommand), source: _vm));
         toggleButton.SetBinding(Button.CommandParameterProperty, new Binding("."));
         toggleButton.SetBinding(Button.TextProperty, nameof(LyricoSourceItem.ToggleText));
 
         var testButton = new Button { Text = "测试", FontSize = 13, Padding = new Thickness(10, 4) };
-        testButton.SetBinding(Button.CommandProperty, nameof(ManualMatchViewModel.OpenSourceTestCommand));
+        testButton.SetBinding(Button.CommandProperty,
+            new Binding(nameof(ManualMatchViewModel.OpenSourceTestCommand), source: _vm));
         testButton.SetBinding(Button.CommandParameterProperty, new Binding("."));
 
         var deleteButton = new Button { Text = "卸载", FontSize = 13, Padding = new Thickness(10, 4) };
-        deleteButton.SetBinding(Button.CommandProperty, nameof(ManualMatchViewModel.DeleteLyricoSourceCommand));
+        deleteButton.SetBinding(Button.CommandProperty,
+            new Binding(nameof(ManualMatchViewModel.DeleteLyricoSourceCommand), source: _vm));
         deleteButton.SetBinding(Button.CommandParameterProperty, new Binding("."));
 
         var textStack = new VerticalStackLayout

@@ -14,7 +14,7 @@ public class SearchLyricsPage : ContentPage
 
     public SearchLyricsPage(SongItem song)
     {
-        _vm = new SearchLyricsViewModel(song, new LrclibApiClient(), PluginHost.AudioFiles);
+        _vm = new SearchLyricsViewModel(song, new LrclibApiClient(), PluginHost.AudioFiles, PluginHost.LyricoHub);
         BindingContext = _vm;
 
         Title = "搜索歌词";
@@ -34,8 +34,10 @@ public class SearchLyricsPage : ContentPage
         content.Add(searchPanel, 0, 0);
         content.Add(list, 0, 1);
 
-        // 底部歌词预览面板（覆盖全页）
-        content.Add(BuildCandidateSheet());
+        // 底部歌词预览面板（覆盖全页）：跨满两行，否则被约束在 row0 搜索卡区域内
+        var sheet = BuildCandidateSheet();
+        Grid.SetRowSpan(sheet, 2);
+        content.Add(sheet, 0, 0);
 
         Content = content;
     }

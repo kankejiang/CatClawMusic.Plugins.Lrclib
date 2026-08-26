@@ -42,6 +42,8 @@ public partial class LocalSearchViewModel : ObservableObject
 
     /// <summary>最近一次后台歌词扫描的完整结果（供 All tab 即时并入）。</summary>
     private List<LyricMatchItem> PendingLyricMatches = new();
+    /// <summary>PendingLyricMatches 所属的查询词（防止旧查询结果混入新查询）。</summary>
+    private string _pendingQuery = "";
 
     /// <summary>歌词全文缓存（FilePath → 歌词文本），避免搜索时重复读取。</summary>
     private static readonly Dictionary<string, string> LyricCache = new();
@@ -103,12 +105,27 @@ public partial class LocalSearchViewModel : ObservableObject
         // 歌词分区：All / Lyrics tab 且有关键词时后台扫描，已完成结果先并入；扫描中显示状态项
         if (needLyrics)
         {
-            _ = SearchLyricsAsync(q);
-            var pendingMatches = PendingLyricMatches.ToList();
-            if (ActiveTab == (int)LocalSearchTab.All)
+            // 该查询已扫描完成则只渲染结果，不再重启扫描（否则完成回调→Apply→重扫 死循环）
+            var alreadyDone = _pendingQuery == q && !IsLyricSearching;
+            if (!alreadyDone)
+                _ = SearchLyricsAsync(q);
+
+            var showSection = ActiveTab == (int)LocalSearchTab.All || ActiveTab == (int)LocalSearchTab.Lyrics;
+            if (showSection)
             {
-                if (list.Count > 0) list.Add(new SectionHeaderItem("歌词", "匹配中，请稍候…"));
-                foreach (var m in pendingMatches) list.Add(m);
+                // 只并入属于当前查询的结果（防止上一轮扫描的旧结果混入）
+                if (_pendingQuery == q)
+                {
+                    var status = IsLyricSearching
+                        ? $"匹配中，请稍候…（{LyricScanDone}/{LyricScanTotal}）"
+                        : PendingLyricMatches.Count > 0 ? $"{PendingLyricMatches.Count} 首命中" : "无匹配歌词";
+                    list.Add(new SectionHeaderItem("歌词", status));
+                    foreach (var m in PendingLyricMatches) list.Add(m);
+                }
+                else
+                {
+                    list.Add(new SectionHeaderItem("歌词", "匹配中，请稍候…"));
+                }
             }
         }
         else if (ActiveTab == (int)LocalSearchTab.Lyrics)
@@ -197,12 +214,18 @@ public partial class LocalSearchViewModel : ObservableObject
             }
 
             if (!cts.IsCancellationRequested)
+            {
+                _pendingQuery = q;
                 PendingLyricMatches = matches;
+            }
         }
         catch { /* 取消中断等静默 */ }
         finally
         {
             IsLyricSearching = false;
+            // 扫描完成后重跑 Apply 把结果回流到列表。
+            // 必须在 IsLyricSearching=false 之后调用：Apply 会以"该查询已完成"判定跳过重新扫描，避免死循环。
+            if (!cts.IsCancellationRequested && Query == q) Apply();
         }
     }
 
