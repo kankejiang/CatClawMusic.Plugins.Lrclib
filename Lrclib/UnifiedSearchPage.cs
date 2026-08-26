@@ -1,4 +1,4 @@
-using Microsoft.Maui.Controls;
+﻿using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Shapes;
 
 namespace CatClawMusic.Plugins.Lrclib;
@@ -40,7 +40,8 @@ public class UnifiedSearchPage : ContentPage
 
         var list = BuildResultList();
 
-        var content = new Grid
+        // 内容区：搜索栏 + 列表（上下布局）
+        var contentGrid = new Grid
         {
             RowDefinitions =
             {
@@ -48,14 +49,19 @@ public class UnifiedSearchPage : ContentPage
                 new RowDefinition(GridLength.Star),
             },
         };
-        content.Add(_searchContainer, 0, 0);
-        content.Add(list, 0, 1);
+        contentGrid.Add(_searchContainer, 0, 0);
+        contentGrid.Add(list, 0, 1);
 
-        // 底部抽屉：遮罩 + 卡片，直接作为根 Grid 子元素（同宿主 AppBottomSheet 思路）
-        BuildSheet(content);
+        // 根布局：单一行 Grid（Star = 占满全屏），内容和抽屉都在这一行里
+        // 抽屉用 VerticalOptions=End 贴底，彻底避开 RowSpan 坑
+        var root = new Grid();
+        root.Children.Add(contentGrid);
+
+        // 底部抽屉：遮罩 + 卡片，叠在最上层
+        BuildSheet(root);
         _vm.Applied += async (_, _) => await CloseSheetAsync();
 
-        Content = content;
+        Content = root;
     }
 
     private bool _autoSearched;
@@ -293,7 +299,7 @@ public class UnifiedSearchPage : ContentPage
         return card;
     }
 
-    // ── 底部抽屉（遮罩 + 卡片，直接放根 Grid，复刻宿主 AppBottomSheet 思路）──
+    // ── 底部抽屉（遮罩 + 卡片，根 Grid 只有一行 Star，VerticalOptions=End 可靠贴底）──
     private void BuildSheet(Grid rootGrid)
     {
         _sheetMask = new BoxView
@@ -358,11 +364,10 @@ public class UnifiedSearchPage : ContentPage
             Content = sheetGrid,
         };
 
-        // 遮罩和卡片直接加入根 Grid，跨两行占满整页
-        Grid.SetRowSpan(_sheetMask, 2);
-        Grid.SetRowSpan(_sheetCard, 2);
-        rootGrid.Add(_sheetMask, 0, 0);
-        rootGrid.Add(_sheetCard, 0, 0);
+        // 遮罩和卡片都在根 Grid 的同一 Star 行里
+        // 遮罩 Fill 占满，卡片 End 贴底
+        rootGrid.Children.Add(_sheetMask);
+        rootGrid.Children.Add(_sheetCard);
     }
 
     private View BuildPreviewContent()
