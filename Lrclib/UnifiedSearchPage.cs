@@ -272,8 +272,13 @@ public class UnifiedSearchPage : ContentPage
         };
 
         var tap = new TapGestureRecognizer();
-        tap.SetBinding(TapGestureRecognizer.CommandProperty, nameof(UnifiedSearchViewModel.ApplyCommand));
         tap.SetBinding(TapGestureRecognizer.CommandParameterProperty, new Binding("."));
+        tap.Tapped += async (s, e) =>
+        {
+            if (e.Parameter is not UnifiedSearchResult item) return;
+            try { await _vm.ApplyCommand.ExecuteAsync(item); }
+            catch { /* 避免异常中断手势 */ }
+        };
         card.GestureRecognizers.Add(tap);
 
         return card;
