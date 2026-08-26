@@ -228,13 +228,25 @@ internal static class PluginNav
         header.Add(back, 0, 0);
         header.Add(title, 1, 0);
 
+        // 用叠放布局：返回头浮在顶部，body 顶部留 40dp 避让。
+        // 比 Grid 行布局更稳，跨平台（尤其 Windows 模态页）都能保证返回头在左上角。
         var outer = new Grid
         {
             ClassId = "plugin-nav-wrap",
-            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Star) },
         };
-        outer.Add(header, 0, 0);
-        outer.Add(body, 0, 1);
+
+        // body 包一层 ContentView，顶部让出返回头高度（不修改 body 自身 padding）
+        var bodyWrapper = new ContentView
+        {
+            Content = body,
+            Padding = new Thickness(0, 40, 0, 0),
+        };
+        outer.Add(bodyWrapper);
+
+        header.VerticalOptions = LayoutOptions.Start;
+        header.HorizontalOptions = LayoutOptions.Fill;
+        header.HeightRequest = 40;
+        outer.Add(header);
         page.Content = outer;
     }
 }
