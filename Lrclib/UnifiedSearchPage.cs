@@ -275,9 +275,14 @@ public class UnifiedSearchPage : ContentPage
         tap.Tapped += async (s, e) =>
         {
             var src = (s as TapGestureRecognizer)?.Parent as BindableObject;
-            if (src?.BindingContext is not UnifiedSearchResult item) return;
+            if (src?.BindingContext is not UnifiedSearchResult item)
+            {
+                _vm.StatusText = "未取到数据项";
+                return;
+            }
+            _vm.StatusText = "正在写入...";
             try { await _vm.ApplyCommand.ExecuteAsync(item); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Search] apply failed: {ex.Message}"); }
+            catch (Exception ex) { _vm.StatusText = $"写入异常：{ex.Message}"; }
         };
         card.GestureRecognizers.Add(tap);
 
