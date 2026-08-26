@@ -11,10 +11,6 @@ namespace CatClawMusic.Plugins.Lrclib;
 public class UnifiedSearchPage : ContentPage
 {
     private readonly UnifiedSearchViewModel _vm;
-    private bool _searchExpanded;
-    private View? _searchBarRow;
-    private View? _searchPanel;
-    private VerticalStackLayout? _searchContainer;
     private HorizontalStackLayout? _chipStack;
 
     public UnifiedSearchPage(SongItem song)
@@ -26,32 +22,24 @@ public class UnifiedSearchPage : ContentPage
         Title = "搜索补全";
         BackgroundColor = GetResourceColor("WindowBackgroundColor", "#1A1838");
 
-        _searchBarRow = BuildCollapsedBar();
-        _searchPanel = BuildExpandedPanel();
-        _searchPanel.IsVisible = false;
-        _searchContainer = new VerticalStackLayout
-        {
-            Spacing = 0,
-            Children = { _searchBarRow, BuildChipLabel(), BuildChipRow() },
-        };
-        _searchContainer.Children.Add(_searchPanel);
-
-        // 来源筛选变化（新搜索/切换来源）时重建 chip 行
-        _vm.SourceFilters.CollectionChanged += (_, _) => RebuildChips();
-
+        var searchBar = BuildSearchBar();
+        var filterSection = BuildFilterSection();
         var list = BuildResultList();
 
-        // 内容区：搜索栏 + 列表（上下布局）
+        _vm.SourceFilters.CollectionChanged += (_, _) => RebuildChips();
+
         var contentGrid = new Grid
         {
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
         };
-        contentGrid.Add(_searchContainer, 0, 0);
-        contentGrid.Add(list, 0, 1);
+        contentGrid.Add(searchBar, 0, 0);
+        contentGrid.Add(filterSection, 0, 1);
+        contentGrid.Add(list, 0, 2);
 
         Content = contentGrid;
     }
@@ -68,116 +56,86 @@ public class UnifiedSearchPage : ContentPage
         }
     }
 
-    // ── 折叠搜索栏 ──
-    private View BuildCollapsedBar()
+    // ── 搜索栏（常驻展开态：胶囊输入框 + 紫色搜索按钮）──
+    private View BuildSearchBar()
     {
-        var keywordLabel = NewLabel(14, FontAttributes.Bold, "TextPrimaryColor", "#F7F8FF", tail: true);
-        keywordLabel.SetBinding(Label.TextProperty,
-            new MultiBinding
-            {
-                Bindings =
-                {
-                    new Binding(nameof(UnifiedSearchViewModel.SearchTitle)),
-                    new Binding(nameof(UnifiedSearchViewModel.SearchArtist)),
-                },
-                Converter = new CollapsedKeywordConverter(),
-            });
-        keywordLabel.VerticalOptions = LayoutOptions.Center;
-
-        var editBtn = new Button
+        var entry = new Entry
         {
-            Text = "修改",
-            FontSize = 13,
-            TextColor = Text("TextPrimaryColor", "#F7F8FF"),
-            BackgroundColor = Colors.Transparent,
-            HeightRequest = 32,
-            Padding = new Thickness(10, 0),
-            HorizontalOptions = LayoutOptions.End,
-        };
-        editBtn.Clicked += (_, _) => ToggleSearchPanel();
-
-        var row = new Grid
-        {
-            Padding = new Thickness(16, 8, 12, 6),
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Auto),
-            },
-        };
-        row.Add(keywordLabel, 0, 0);
-        row.Add(editBtn, 1, 0);
-        return row;
-    }
-
-    private void ToggleSearchPanel()
-    {
-        _searchExpanded = !_searchExpanded;
-        if (_searchPanel != null) _searchPanel.IsVisible = _searchExpanded;
-    }
-
-    // ── 展开搜索面板 ──
-    private View BuildExpandedPanel()
-    {
-        var titleEntry = new Entry
-        {
-            Placeholder = "歌名",
+            Placeholder = "搜索歌词 / 封面",
             TextColor = Text("TextPrimaryColor", "#F7F8FF"),
             PlaceholderColor = Text("TextSecondaryColor", "#C2C6E4"),
             BackgroundColor = Colors.Transparent,
+            FontSize = 14,
+            HeightRequest = 40,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Center,
         };
-        titleEntry.SetBinding(Entry.TextProperty, nameof(UnifiedSearchViewModel.SearchTitle));
+        entry.SetBinding(Entry.TextProperty, nameof(UnifiedSearchViewModel.SearchTitle));
 
-        var artistEntry = new Entry
-        {
-            Placeholder = "艺人（可空）",
-            TextColor = Text("TextPrimaryColor", "#F7F8FF"),
-            PlaceholderColor = Text("TextSecondaryColor", "#C2C6E4"),
-            BackgroundColor = Colors.Transparent,
-        };
-        artistEntry.SetBinding(Entry.TextProperty, nameof(UnifiedSearchViewModel.SearchArtist));
-
-        var searchButton = new Button
+        var searchBtn = new Button
         {
             Text = "搜索",
             FontSize = 14,
+            FontAttributes = FontAttributes.Bold,
             TextColor = Colors.White,
             BackgroundColor = Text("PrimaryColor", "#8C7BFF"),
-            CornerRadius = 18,
-            Padding = new Thickness(16, 2),
+            CornerRadius = 20,
             HeightRequest = 36,
+            Padding = new Thickness(16, 0),
         };
-        searchButton.SetBinding(Button.CommandProperty, nameof(UnifiedSearchViewModel.SearchCommand));
-        searchButton.SetBinding(Button.IsEnabledProperty,
+        searchBtn.SetBinding(Button.CommandProperty, nameof(UnifiedSearchViewModel.SearchCommand));
+        searchBtn.SetBinding(Button.IsEnabledProperty,
             new Binding(nameof(UnifiedSearchViewModel.IsBusy)) { Converter = new InverseBooleanConverter(), Source = _vm });
 
-        var searchRow = new Grid
+        var bar = new Border
         {
-            ColumnSpacing = 10,
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Auto),
-            },
-        };
-        searchRow.Add(titleEntry, 0);
-        searchRow.Add(artistEntry, 1);
-        searchRow.Add(searchButton, 2);
-
-        var statusLabel = NewLabel(12, FontAttributes.None, "TextSecondaryColor", "#C2C6E4", tail: false);
-        statusLabel.LineBreakMode = LineBreakMode.WordWrap;
-        statusLabel.Margin = new Thickness(2, 6, 2, 0);
-        statusLabel.SetBinding(Label.TextProperty, nameof(UnifiedSearchViewModel.StatusText));
-
-        return new Border
-        {
-            Margin = new Thickness(12, 2, 12, 4),
+            Margin = new Thickness(16, 12, 16, 4),
             StrokeThickness = 0,
             Background = GetBrush("CardBackgroundColor", "#1AFFFFFF"),
-            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(16) },
-            Padding = new Thickness(12, 10),
-            Content = new VerticalStackLayout { Spacing = 0, Children = { searchRow, statusLabel } },
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(22) },
+            Padding = new Thickness(16, 2, 6, 2),
+            Content = new Grid
+            {
+                ColumnSpacing = 8,
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(GridLength.Star),
+                    new ColumnDefinition(GridLength.Auto),
+                },
+                Children = { entry, searchBtn },
+            },
+        };
+        Grid.SetColumn(entry, 0);
+        Grid.SetColumn(searchBtn, 1);
+        return bar;
+    }
+
+    // ── 来源筛选区：标签 + chip 行 ──
+    private View BuildFilterSection()
+    {
+        var label = new Label
+        {
+            Text = "按来源筛选",
+            FontSize = 11,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Text("TextSecondaryColor", "#C2C6E4"),
+            Margin = new Thickness(16, 6, 16, 4),
+        };
+
+        _chipStack = new HorizontalStackLayout { Spacing = 8 };
+        var scroll = new ScrollView
+        {
+            Orientation = ScrollOrientation.Horizontal,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+            Padding = new Thickness(16, 0, 16, 8),
+            Content = _chipStack,
+        };
+
+        return new VerticalStackLayout
+        {
+            Spacing = 0,
+            Children = { label, scroll },
         };
     }
 
