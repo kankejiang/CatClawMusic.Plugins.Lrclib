@@ -48,6 +48,7 @@ public class SearchCoverPage : ContentPage
         content.Add(sheet, 0, 0);
 
         Content = content;
+        WideAdapt.Attach(this);
     }
 
     private bool _autoSearched;

@@ -22,6 +22,7 @@ public class CustomTagManagementPage : ContentPage
         Title = "自定义标签";
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
         Content = new ScrollView { Content = BuildContent() };
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
     }
 
     private View BuildContent()

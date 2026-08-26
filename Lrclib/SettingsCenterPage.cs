@@ -14,6 +14,7 @@ public class SettingsCenterPage : ContentPage
         Title = "设置";
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
         Content = new ScrollView { Content = BuildContent() };
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
     }
 
     private View BuildContent()
@@ -118,6 +119,8 @@ public class SettingsCenterPage : ContentPage
         tap.Tapped += async (_, _) => await navigate();
         row.GestureRecognizers.Add(tap);
 
-        return LyricoUi.Card(row);
+        var card = LyricoUi.Card(row);
+        WideAdapt.AttachHover(card);
+        return card;
     }
 }

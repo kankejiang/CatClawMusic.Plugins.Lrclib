@@ -33,6 +33,7 @@ public class AlbumDetailPage : ContentPage
         root.Add(BuildHeader(), 0, 0);
         root.Add(_list, 0, 1);
         Content = root;
+        WideAdapt.Attach(this);
         KickOffLoad();
     }
 
@@ -72,21 +73,38 @@ public class AlbumDetailPage : ContentPage
         var subtitle = ThemeHelper.Label(13, FontAttributes.None, "TextSecondaryColor", "#C2C6E4", true);
         subtitle.SetBinding(Label.TextProperty, nameof(AlbumItem.Subtitle));
 
-        var stack = new VerticalStackLayout
+        var cover = LyricoUi.Cover(nameof(AlbumItem.CoverPath), nameof(AlbumItem.CoverText), 180, 20);
+        var text = new VerticalStackLayout
         {
             Spacing = 6,
             HorizontalOptions = LayoutOptions.Center,
-            Children =
-            {
-                LyricoUi.Cover(nameof(AlbumItem.CoverPath), nameof(AlbumItem.CoverText), 180, 20),
-                title,
-                subtitle,
-            },
+            VerticalOptions = LayoutOptions.Center,
+            Children = { title, subtitle },
         };
 
-        var box = new Grid { Padding = new Thickness(16, 16, 16, 12) };
-        box.Add(stack, 0);
-        return box;
+        // 宽屏（Windows/横屏）封面居左、文字居右；窄屏封面上、文字下居中
+        var header = new Grid
+        {
+            Padding = new Thickness(16, 16, 16, 12),
+            RowSpacing = 10,
+            ColumnSpacing = 20,
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
+            },
+        };
+        header.Add(cover, 0, 0);
+        Grid.SetColumnSpan(cover, 2);
+        header.Add(text, 0, 1);
+        Grid.SetColumnSpan(text, 2);
+        WideAdapt.AttachHeader(this, header, cover, text);
+        return header;
     }
 
     private async void OnSongSelected(object? sender, SelectionChangedEventArgs e)

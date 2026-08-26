@@ -69,6 +69,7 @@ public class PluginManagerPage : ContentPage
         root.Add(status, 0, 2);
         root.Add(list, 0, 3);
         Content = root;
+        WideAdapt.Attach(this);
     }
 
     protected override void OnAppearing()
@@ -145,7 +146,9 @@ public class PluginManagerPage : ContentPage
         row.Add(text, 1);
         row.Add(buttons, 2);
 
-        return LyricoUi.Card(row);
+        var card = LyricoUi.Card(row);
+        WideAdapt.AttachHover(card);
+        return card;
     }
 
     /// <summary>操作按钮：命令绑定必须显式 source 到页面 VM（DataTemplate 行内 BindingContext 是条目对象）。</summary>

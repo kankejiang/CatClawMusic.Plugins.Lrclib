@@ -36,6 +36,7 @@ internal static class LyricoUi
         grid.Add(Cover(nameof(SongItem.CoverPath), nameof(SongItem.CoverText), 48), 0);
         grid.Add(textStack, 1);
         grid.Add(duration.CenteredY(), 2);
+        WideAdapt.AttachHover(grid);
         return grid;
     }
 

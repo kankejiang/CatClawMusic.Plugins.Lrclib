@@ -21,6 +21,7 @@ public class ArtistSplitSettingsPage : ContentPage
         Title = "艺术家拆分设置";
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
         Content = new ScrollView { Content = BuildContent() };
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
     }
 
     private View BuildContent()

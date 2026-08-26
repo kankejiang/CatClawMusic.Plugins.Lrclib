@@ -39,6 +39,7 @@ public class BatchLyricsFormatPage : ContentPage
         root.Add(results, 0, 2);
 
         Content = root;
+        WideAdapt.Attach(this);
     }
 
     // ── 顶部：状态 + 进度 ──

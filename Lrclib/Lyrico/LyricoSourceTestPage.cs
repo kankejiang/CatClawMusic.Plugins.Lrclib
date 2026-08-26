@@ -81,6 +81,7 @@ public class LyricoSourceTestPage : ContentPage
                 Children = { titleLabel, hint, titleEntry, artistEntry, albumEntry, durEntry, runButton, status, preview },
             }
         };
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
     }
 
     private Entry MakeEntry(string placeholder, string binding)

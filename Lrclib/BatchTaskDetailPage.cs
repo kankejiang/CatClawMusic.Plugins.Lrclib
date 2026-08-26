@@ -54,6 +54,7 @@ public class BatchTaskDetailPage : ContentPage
         root.Add(itemsHeader, 0, 1);
         root.Add(list, 0, 2);
         Content = root;
+        WideAdapt.Attach(this);
     }
 
     private static View Row(string label, string value)

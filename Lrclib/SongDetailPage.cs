@@ -21,6 +21,7 @@ public class SongDetailPage : ContentPage
 
         var scroll = new ScrollView { Content = BuildContent() };
         Content = scroll;
+        WideAdapt.Attach(this);
 
         _ = LoadAsync();
     }
@@ -91,6 +92,7 @@ public class SongDetailPage : ContentPage
             HeightRequest = 140,
             WidthRequest = 140,
             HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
             Children = { placeholder, cover },
         };
 
@@ -98,14 +100,32 @@ public class SongDetailPage : ContentPage
         {
             Spacing = 4,
             HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
             Children = { title, artist, album },
         };
 
-        return new VerticalStackLayout
+        // 宽屏（Windows/横屏）封面居左、文字居右；窄屏封面上、文字下居中
+        var header = new Grid
         {
-            Spacing = 12,
-            Children = { coverBox, textStack },
+            RowSpacing = 12,
+            ColumnSpacing = 20,
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
+            },
         };
+        header.Add(coverBox, 0, 0);
+        Grid.SetColumnSpan(coverBox, 2);
+        header.Add(textStack, 0, 1);
+        Grid.SetColumnSpan(textStack, 2);
+        WideAdapt.AttachHeader(this, header, coverBox, textStack);
+        return header;
     }
 
     private View BuildTagCard()

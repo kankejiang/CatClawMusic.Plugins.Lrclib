@@ -39,6 +39,7 @@ public class LocalSearchPage : ContentPage
         root.Add(_list, 0, 2);
 
         Content = root;
+        WideAdapt.Attach(this);
 
         _list.SelectionChanged += OnItemSelected;
         _ = _vm.InitializeCommand.ExecuteAsync(null);
@@ -219,6 +220,7 @@ public class LocalSearchPage : ContentPage
         grid.Add(BuildCover(nameof(SongItem.CoverPath), nameof(SongItem.CoverText), 48), 0);
         grid.Add(textStack, 1);
         grid.Add(duration.CenteredY(), 2);
+        WideAdapt.AttachHover(grid);
         return grid;
     }
 
@@ -247,6 +249,7 @@ public class LocalSearchPage : ContentPage
         };
         grid.Add(BuildCover(nameof(AlbumItem.CoverPath), nameof(AlbumItem.CoverText), 48), 0);
         grid.Add(textStack, 1);
+        WideAdapt.AttachHover(grid);
         return grid;
     }
 
@@ -275,6 +278,7 @@ public class LocalSearchPage : ContentPage
         };
         grid.Add(BuildCover(null, nameof(ArtistItem.CoverText), 48), 0);
         grid.Add(textStack, 1);
+        WideAdapt.AttachHover(grid);
         return grid;
     }
 
@@ -306,6 +310,7 @@ public class LocalSearchPage : ContentPage
         };
         grid.Add(BuildCover(nameof(LyricMatchItem.Song.CoverPath), nameof(LyricMatchItem.Song.CoverText), 48), 0);
         grid.Add(textStack, 1);
+        WideAdapt.AttachHover(grid);
         return grid;
     }
 

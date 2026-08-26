@@ -135,6 +135,7 @@ public class CharacterMappingPage : ContentPage
                 Children = { hint, addRow, listHeader, list, _status, saveButton, resetButton },
             }
         };
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
     }
 
     private void AddMapping()

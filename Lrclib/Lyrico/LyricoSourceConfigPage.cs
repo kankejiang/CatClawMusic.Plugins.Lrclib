@@ -48,6 +48,7 @@ public class LyricoSourceConfigPage : ContentPage
                 Children = { status, form, saveButton },
             }
         };
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
     }
 
     /// <summary>按字段类型构建表单控件。每个字段包在一个可见性容器里（绑定 IsVisible）。</summary>

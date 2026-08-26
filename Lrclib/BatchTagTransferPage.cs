@@ -26,6 +26,7 @@ public class BatchTagTransferPage : ContentPage
         };
 
         Content = BuildContent();
+        WideAdapt.Attach(this);
     }
 
     private View BuildContent()

@@ -600,6 +600,7 @@ public class MusicLibraryPage : ContentPage
         grid.Add(BuildCover(nameof(SongItem.CoverPath), nameof(SongItem.CoverText), 48), 0);
         grid.Add(textStack, 1);
         grid.Add(duration.CenteredY(), 2);
+        WideAdapt.AttachHover(grid);
         return grid;
     }
 
@@ -622,7 +623,7 @@ public class MusicLibraryPage : ContentPage
             },
         };
 
-        return new Border
+        var card = new Border
         {
             StrokeThickness = 0,
             Background = ThemeHelper.Brush("CardBackgroundColor", "#1AFFFFFF"),
@@ -630,6 +631,8 @@ public class MusicLibraryPage : ContentPage
             Padding = new Thickness(10),
             Content = stack,
         };
+        WideAdapt.AttachHover(card);
+        return card;
     }
 
     // ── 艺人分组头 ──
@@ -679,6 +682,7 @@ public class MusicLibraryPage : ContentPage
         };
         grid.Add(BuildCover(null, nameof(ArtistItem.CoverText), 48), 0);
         grid.Add(stack, 1);
+        WideAdapt.AttachHover(grid);
         return grid;
     }
 

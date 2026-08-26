@@ -71,6 +71,7 @@ public class SettingsBackupPage : ContentPage
                 Children = { hint, backupHeader, _backupPath, backupButton, restoreHeader, _restorePath, restoreButton, _status },
             }
         };
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
     }
 
     private static Label MakeLabel(string text)

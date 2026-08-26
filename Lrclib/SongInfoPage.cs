@@ -21,6 +21,7 @@ public class SongInfoPage : ContentPage
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
 
         Content = new ScrollView { Content = BuildContent() };
+        WideAdapt.Attach(this);
         _ = _vm.LoadAsync();
     }
 

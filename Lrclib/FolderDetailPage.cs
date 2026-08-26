@@ -53,6 +53,7 @@ public class FolderDetailPage : ContentPage
         root.Add(_list, 0, 1);
         root.Add(_empty, 0, 1);   // 与列表同行，互斥显示
         Content = root;
+        WideAdapt.Attach(this);
         KickOffLoad();
     }
 

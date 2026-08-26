@@ -17,6 +17,7 @@ public class EditFieldVisibilityPage : ContentPage
         Title = "编辑字段可见性";
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
         Content = new ScrollView { Content = BuildContent() };
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
     }
 
     private View BuildContent()

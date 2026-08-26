@@ -21,6 +21,7 @@ public class BatchReplayGainPage : ContentPage
         Title = "批量响度";
         BackgroundColor = ThemeHelper.Color("WindowBackgroundColor", "#1A1838");
         Content = BuildContent();
+        WideAdapt.Attach(this);
     }
 
     private View BuildContent()

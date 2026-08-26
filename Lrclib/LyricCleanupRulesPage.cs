@@ -135,6 +135,7 @@ public class LyricCleanupRulesPage : ContentPage
                 Children = { hint, addRow, kwHeader, kwList, emptyRow, _status, saveButton, resetButton },
             }
         };
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
     }
 
     private void AddKeyword()

@@ -42,6 +42,7 @@ public sealed class UnifiedSearchPreviewPage : ContentPage
         rootGrid.Add(_contentView, 0, 2);
 
         Content = rootGrid;
+        WideAdapt.Attach(this);
 
         _vm.Applied += async (_, _) =>
         {
@@ -250,24 +251,47 @@ public sealed class UnifiedSearchPreviewPage : ContentPage
         AddCheckbox("歌词", nameof(UnifiedSearchViewModel.ApplyLyrics), 2);
         AddCheckbox("封面", nameof(UnifiedSearchViewModel.ApplyCover), 4);
 
-        var stack = new VerticalStackLayout
+        // 文字区：窄屏在封面下方居中；宽屏（Windows/横屏）在封面右侧左对齐
+        var textStack = new VerticalStackLayout
         {
             Spacing = 8,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            Children = { title, subtitle, badgeStack, checkboxRow, statusLabel },
+        };
+
+        var header = new Grid
+        {
             Padding = new Thickness(20, 16, 20, 12),
-            Children =
+            RowSpacing = 10,
+            ColumnSpacing = 20,
+            RowDefinitions =
             {
-                coverBox,
-                title,
-                subtitle,
-                badgeStack,
-                checkboxRow,
-                statusLabel,
+                new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star),
             },
         };
+        header.Add(coverBox, 0, 0);
+        Grid.SetColumnSpan(coverBox, 2);
+        header.Add(textStack, 0, 1);
+        Grid.SetColumnSpan(textStack, 2);
+        WideAdapt.AttachHeader(this, header, coverBox, textStack, wide =>
+        {
+            var align = wide ? TextAlignment.Start : TextAlignment.Center;
+            title.HorizontalTextAlignment = align;
+            subtitle.HorizontalTextAlignment = align;
+            statusLabel.HorizontalTextAlignment = align;
+            badgeStack.HorizontalOptions = wide ? LayoutOptions.Start : LayoutOptions.Center;
+        });
 
         // 写入按钮浮在右上角
         var outer = new Grid();
-        outer.Children.Add(stack);
+        outer.Children.Add(header);
         outer.Children.Add(applyBtn);
         return outer;
     }

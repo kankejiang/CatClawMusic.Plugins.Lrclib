@@ -160,6 +160,7 @@ public class ManualMatchPage : ContentPage
                 }
             }
         };
+        WideAdapt.Attach(this);
 
         // 候选为空时隐藏空态提示？简化处理：保持常显（CollectionView 空列表自然不渲染行）
     }

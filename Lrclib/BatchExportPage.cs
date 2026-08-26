@@ -100,6 +100,7 @@ public class BatchExportPage : ContentPage
                 Children = { folderEntry, optionsGrid, exportButton, status, resultsView },
             }
         };
+        WideAdapt.Attach(this);
     }
 
     private static Label MakeRowLabel(string text)

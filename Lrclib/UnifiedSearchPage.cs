@@ -42,6 +42,7 @@ public class UnifiedSearchPage : ContentPage
         contentGrid.Add(list, 0, 2);
 
         Content = contentGrid;
+        WideAdapt.Attach(this);
     }
 
     private bool _autoSearched;
@@ -294,6 +295,7 @@ public class UnifiedSearchPage : ContentPage
             Margin = new Thickness(0, 0, 0, 8),
             Content = row,
         };
+        WideAdapt.AttachHover(card);
 
         return card;
     }

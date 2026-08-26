@@ -30,6 +30,7 @@ public class EditMetadataPage : ContentPage
         root.Add(topBar, 0, 0);
         root.Add(scroll, 0, 1);
         Content = root;
+        WideAdapt.Attach(this, WideAdapt.FormMaxWidth);
 
         _ = _vm.LoadAsync();
     }
