@@ -64,19 +64,12 @@ internal static class PluginNav
 
     public static async Task PushAsync(Page page)
     {
+        // 所有承载方式统一注入叠放式返回头（浮在顶部），彻底规避插件容器里
+        // Grid 行布局不可靠导致的返回键跑位（Android Shell 与 Windows 桌面一致）。
         if (page is ContentPage cp)
         {
-            if (TryGetShellNavigation() != null)
-            {
-                // Android Shell 路径：宿主隐藏导航栏 → 注入返回头 + 安全区
-                AddBackHeader(cp);
-                cp.AttachSafeArea();
-            }
-            else
-            {
-                // 桌面/无 Shell：WrapRoot 提供返回头，这里只做安全区
-                cp.AttachSafeArea();
-            }
+            AddBackHeader(cp);
+            cp.AttachSafeArea();
         }
 
         if (TryGetShellNavigation() is { } shellNav)
@@ -85,71 +78,30 @@ internal static class PluginNav
             return;
         }
 
-        // 桌面：窗口导航只支持模态。用 NavigationPage 包一层获得子页栈与返回条。
+        // 桌面：窗口导航只支持模态。用 NavigationPage 提供子页栈。
         var main = Application.Current?.Windows.FirstOrDefault()?.Page;
         if (main == null) return;
 
         if (_modalRoot == null)
         {
-            // 首个被压入的页面是 NavigationPage 根，系统不会为根绘制返回箭头；
-            // 故用带统一返回按钮的包装页承载其内容，保证能返回主界面。
-            var rootPage = page is ContentPage rootContent ? WrapRoot(rootContent) : page;
-            if (rootPage is ContentPage rootCp) rootCp.AttachSafeArea();   // 包装页返回头同样避让状态栏
-            _modalRoot = new NavigationPage(rootPage);
+            // 根页自己也带叠放返回头（shell 无返回箭头时用），并禁掉 NavigationPage
+            // 系统返回条，避免双返回、且不受系统导航栏位置影响。
+            if (page is ContentPage rootCp)
+            {
+                NavigationPage.SetHasNavigationBar(rootCp, false);
+                _modalRoot = new NavigationPage(rootCp);
+            }
+            else
+            {
+                _modalRoot = new NavigationPage(page);
+            }
             await main.Navigation.PushModalAsync(_modalRoot);
         }
         else
         {
+            if (page is ContentPage child) NavigationPage.SetHasNavigationBar(child, false);
             await _modalRoot.Navigation.PushAsync(page);
         }
-    }
-
-    /// <summary>把页面内容装进带统一返回按钮的根包装页（桌面回主界面入口）。</summary>
-    static ContentPage WrapRoot(ContentPage page)
-    {
-        var body = page.Content;
-        if (body != null)
-        {
-            body.BindingContext = page.BindingContext;
-            page.Content = null;
-        }
-
-        var back = new Button
-        {
-            Text = "‹",
-            FontSize = 28,
-            FontAttributes = FontAttributes.Bold,
-            BackgroundColor = Colors.Transparent,
-            TextColor = ThemeHelper.Color("TextPrimaryColor", "#F7F8FF"),
-            WidthRequest = 44,
-            HeightRequest = 40,
-            Padding = new Thickness(8, 0),
-            VerticalOptions = LayoutOptions.Center,
-        };
-        back.Clicked += async (_, _) => await PopAsync();
-
-        var title = new Label
-        {
-            Text = page.Title ?? string.Empty,
-            FontSize = 18,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = ThemeHelper.Color("TextPrimaryColor", "#F7F8FF"),
-            VerticalOptions = LayoutOptions.Center,
-        };
-
-        var header = new HorizontalStackLayout
-        {
-            Spacing = 4,
-            Padding = new Thickness(8, 8, 12, 4),
-            Children = { back, title },
-        };
-
-        var root = new Grid { RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Star) } };
-        root.Add(header, 0);
-        if (body != null) root.Add(body, 1);
-
-        var wrapper = new ContentPage { Title = page.Title ?? string.Empty, Content = root };
-        return wrapper;
     }
 
     public static async Task PopAsync()
