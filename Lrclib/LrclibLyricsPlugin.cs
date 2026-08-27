@@ -50,7 +50,7 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
     // ── IViewContributorPlugin：发现页「音乐库」入口 ──
 
     /// <summary>发现页入口显示标题</summary>
-    public string EntryTitle => "Lyrico 音乐库";
+    public string EntryTitle => "Lrclib";
 
     /// <summary>发现页入口图标（Emoji）</summary>
     public string EntryIcon => "🎵";
