@@ -114,18 +114,21 @@ public sealed class LyricoHttp
 
     public LyricoHttp(Engine engine) { _engine = engine; }
 
+    // 注意：不能用同步 Client.Send()——安卓宿主的 HttpClientHandler（Mono HttpWebRequest 栈）
+    // 同步 Send 抛 PlatformNotSupportedException，必须走 SendAsync；JS 在 Task.Run 后台线程执行，
+    // 同步等待异步任务不会死锁。
     public string getText(string url, JsValue options)
     {
-        var (req, _) = BuildRequest(url, "GET", null, options);
-        using var resp = Client.Send(req, HttpCompletionOption.ResponseContentRead);
+        var (req, _, ct) = BuildRequest(url, "GET", null, options);
+        using var resp = Client.SendAsync(req, HttpCompletionOption.ResponseContentRead, ct).GetAwaiter().GetResult();
         return new StreamReader(resp.Content.ReadAsStream(), Encoding.UTF8).ReadToEnd();
     }
 
     public string postText(string url, string body, JsValue options)
     {
-        var (req, ct) = BuildRequest(url, "POST", body, options);
+        var (req, ct, token) = BuildRequest(url, "POST", body, options);
         if (ct != null) req.Content = new StringContent(body, Encoding.UTF8, MediaTypeOnly(ct));
-        using var resp = Client.Send(req);
+        using var resp = Client.SendAsync(req, HttpCompletionOption.ResponseContentRead, token).GetAwaiter().GetResult();
         return new StreamReader(resp.Content.ReadAsStream(), Encoding.UTF8).ReadToEnd();
     }
 
@@ -140,11 +143,11 @@ public sealed class LyricoHttp
 
     private JsValue SendJson(string url, string method, string? body, JsValue options)
     {
-        var (req, ct) = BuildRequest(url, method, body, options);
+        var (req, ct, token) = BuildRequest(url, method, body, options);
         if (ct != null && body != null) req.Content = new StringContent(body, Encoding.UTF8, MediaTypeOnly(ct));
         try
         {
-            using var resp = Client.Send(req);
+            using var resp = Client.SendAsync(req, token).GetAwaiter().GetResult();
             var bytes = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
             var bodyText = TryUtf8(bytes);
             var headers = ReadHeaders(resp);
@@ -157,8 +160,8 @@ public sealed class LyricoHttp
         }
     }
 
-    /// <summary>构造请求。返回 (request, contentType)。</summary>
-    private static (HttpRequestMessage, string?) BuildRequest(string url, string method, string? body, JsValue options)
+    /// <summary>构造请求。返回 (request, contentType, 每请求超时 token)。</summary>
+    private static (HttpRequestMessage, string?, CancellationToken) BuildRequest(string url, string method, string? body, JsValue options)
     {
         var req = new HttpRequestMessage(new HttpMethod(method), url);
         req.Headers.TryAddWithoutValidation("User-Agent", DefaultUserAgent);
@@ -190,10 +193,9 @@ public sealed class LyricoHttp
         // 连接/读取超时合计作为本请求 CancellationToken 超时
         var totalMs = Math.Max(1000, connectTimeoutMs + readTimeoutMs);
         var cts = new CancellationTokenSource(totalMs);
-        req.Options.Set(new HttpRequestOptionsKey<CancellationToken>("request-cancellation"), cts.Token);
         if (!followRedirects) { req.Options.Set(new HttpRequestOptionsKey<bool>("follow-redirects"), false); }
 
-        return (req, contentType);
+        return (req, contentType, cts.Token);
     }
 
     private static void ApplyHeader(HttpRequestMessage req, string name, string value)
