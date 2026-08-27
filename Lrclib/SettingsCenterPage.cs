@@ -24,7 +24,8 @@ public class SettingsCenterPage : ContentPage
             Spacing = 2,
             Children =
             {
-                L(13, FontAttributes.Bold, "猫爪音乐 · Lyrico 插件 v1.2.0"),
+                L(13, FontAttributes.Bold,
+                    $"猫爪音乐 · Lyrico 插件 v{typeof(LyricoUi).Assembly.GetName().Version}"),
                 L(12, FontAttributes.None,
                     "LRCLIB 开放歌词库 + Lyrico 多源歌词兜底\n音乐库浏览 / 标签编辑 / 批量操作 / 源插件管理"),
             },

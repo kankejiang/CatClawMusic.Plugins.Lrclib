@@ -40,7 +40,7 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
 
     public string PluginId => "lrclib";
     public string Name => "LRCLIB 在线歌词";
-    public string Version => "1.2.0";
+    public string Version { get; } = typeof(LrclibLyricsPlugin).Assembly.GetName().Version?.ToString() ?? "1.2.0";
     public string Author => "CatClawMusic";
     public string Description => "LRCLIB 开放歌词库 + Lyrico 多源歌词兜底；音乐库浏览/标签编辑/批量操作（匹配·编辑·重命名·响度·歌词格式化·标签转移）/本地搜索";
     public List<string> Capabilities => new() { "lyrics" };
