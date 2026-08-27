@@ -42,38 +42,49 @@ public sealed class LyricoScriptHost
         lock (_initLock)
         {
             if (_loaded) return true;
-            try
-            {
-                var script = BuildCompositeScript();
-                if (script == null)
-                {
-                    _loadError = $"插件 {_plugin} 资源缺失（entry/manifest）";
-                    return false;
-                }
+            // 必须在本方法体（无 Jint 类型引用）内先显式装载引擎程序集，
+            // 再进入引用 Jint 类型的 EnsureLoadedLocked——后者的 JIT 需要解析
+            // Jint.Engine，若此时程序集不在 AppDomain 且 AssemblyResolve 链
+            // 未生效（Mono/Android），会直接抛 FileNotFoundException。
+            LyricoScriptEngineLoader.EnsureEngineLoaded();
+            return EnsureLoadedLocked();
+        }
+    }
 
-                var engine = new Engine(opts => opts
-                    .LimitRecursion(5000)
-                    .TimeoutInterval(TimeSpan.FromSeconds(10)));
-                engine.Global["Platform"] = JsValue.FromObject(engine, new LyricoPlatform(engine));
-                engine.Execute("var console={log:function(){},error:function(){},warn:function(){},info:function(){},debug:function(){},trace:function(){}};");
-                engine.Execute(script);
-
-                var hasGetLyrics = engine.Global.HasOwnProperty("getLyrics");
-                if (!hasGetLyrics)
-                {
-                    _loadError = $"插件 {_plugin} 未声明 getLyrics";
-                    return false;
-                }
-                _engine = engine;
-                _loaded = true;
-                return true;
-            }
-            catch (Exception ex)
+    /// <summary>真正执行脚本装载（含 Jint 类型引用，仅在引擎程序集就绪后调用）。</summary>
+    private bool EnsureLoadedLocked()
+    {
+        try
+        {
+            var script = BuildCompositeScript();
+            if (script == null)
             {
-                _loadError = $"插件 {_plugin} 执行失败：{ex.Message}";
-                LyricoLog.Warn(_plugin, _loadError);
+                _loadError = $"插件 {_plugin} 资源缺失（entry/manifest）";
                 return false;
             }
+
+            var engine = new Engine(opts => opts
+                .LimitRecursion(5000)
+                .TimeoutInterval(TimeSpan.FromSeconds(10)));
+            engine.Global["Platform"] = JsValue.FromObject(engine, new LyricoPlatform(engine));
+            engine.Execute("var console={log:function(){},error:function(){},warn:function(){},info:function(){},debug:function(){},trace:function(){}};");
+            engine.Execute(script);
+
+            var hasGetLyrics = engine.Global.HasOwnProperty("getLyrics");
+            if (!hasGetLyrics)
+            {
+                _loadError = $"插件 {_plugin} 未声明 getLyrics";
+                return false;
+            }
+            _engine = engine;
+            _loaded = true;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"插件 {_plugin} 执行失败：{ex.Message}";
+            LyricoLog.Warn(_plugin, _loadError);
+            return false;
         }
     }
 
@@ -138,6 +149,7 @@ public sealed class LyricoScriptHost
         await _execLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            _loadError = null;  // 每次调用重置，LoadError 始终反映最近一次执行
             var result = await Task.Run(() =>
             {
                 var fn = engine.Global.Get("getLyrics");

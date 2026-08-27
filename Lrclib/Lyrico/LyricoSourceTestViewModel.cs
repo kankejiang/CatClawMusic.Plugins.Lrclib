@@ -50,7 +50,11 @@ public partial class LyricoSourceTestViewModel : ObservableObject
                 TestArtist.Trim(), TestAlbum.Trim(), dur);
             if (lyrics == null || lyrics.Lines.Count == 0)
             {
-                StatusText = "未取到歌词（源无结果 / 配置缺失 / 网络问题）";
+                // 展示真实失败原因（引擎/脚本装载错误），而不是笼统提示
+                var loadError = _hub.GetSourceLoadError(_pluginDir);
+                StatusText = loadError != null
+                    ? $"未取到歌词（源执行异常：{loadError}）"
+                    : "未取到歌词（源无结果 / 配置缺失 / 网络问题）";
                 return;
             }
             HasResult = true;

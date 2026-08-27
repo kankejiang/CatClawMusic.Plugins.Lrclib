@@ -92,12 +92,13 @@ public partial class UnifiedSearchViewModel : ObservableObject
             catch { return null; }
         });
 
+        var lyricoErrors = new List<string>();
         var lyricoTask = _lyricoHub != null ? Task.Run<List<(LrclibTrack track, string source, LrcLyrics structured)>>(async () =>
         {
             try
             {
                 var duration = Song.Song.Duration > 1000 ? Song.Song.Duration / 1000.0 : Song.Song.Duration;
-                var hits = await _lyricoHub.SearchAllSourcesAsync(title, artist, null, duration);
+                var hits = await _lyricoHub.SearchAllSourcesAsync(title, artist, null, duration, errorCollector: lyricoErrors);
                 var result = new List<(LrclibTrack, string, LrcLyrics)>();
                 foreach (var entry in hits)
                 {
@@ -207,6 +208,14 @@ public partial class UnifiedSearchViewModel : ObservableObject
         StatusText = total == 0
             ? "没有找到结果（检查关键字，或该歌未被收录）"
             : $"找到 {total} 个结果（歌词 {withLyrics} / 封面 {withCover}）";
+        // 源执行失败时把真实原因拼进状态栏（安卓端 JS 源诊断）
+        if (lyricoErrors.Count > 0)
+        {
+            var first = lyricoErrors[0];
+            if (first.Length > 80) first = first[..80] + "…";
+            StatusText += $"；{lyricoErrors.Count} 个源失败（{first}" +
+                          (lyricoErrors.Count > 1 ? " 等）" : "）");
+        }
     }
 
     // ── 来源筛选 ──

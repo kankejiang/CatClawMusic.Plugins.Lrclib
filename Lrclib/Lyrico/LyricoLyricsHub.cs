@@ -201,8 +201,22 @@ public sealed class LyricoLyricsHub : IDisposable
         }
     }
 
-    /// <summary>取已安装源的信息列表（目录名 + 显示名 + 加载状态），供管理 UI 展示。
-    /// 未 WarmUp 时仅返回目录名与未加载状态。</summary>
+    /// <summary>主动装载指定源（执行脚本）。供源管理页诊断用：装载失败时 LoadError 有真实原因。</summary>
+    public bool EnsureSourceLoaded(string dir)
+    {
+        EnsureInitialized();
+        lock (_initLock)
+            return _hosts.TryGetValue(dir, out var host) && host.EnsureLoaded();
+    }
+
+    /// <summary>取指定源的装载错误（未装载/成功时为 null）。供测试页与管理页展示真实失败原因。</summary>
+    public string? GetSourceLoadError(string dir)
+    {
+        EnsureInitialized();
+        lock (_initLock)
+            return _hosts.TryGetValue(dir, out var host) ? host.LoadError : null;
+    }
+
     public IReadOnlyList<(string Dir, string Name, string Status)> GetSourceInfos()
     {
         EnsureInitialized();
@@ -217,7 +231,7 @@ public sealed class LyricoLyricsHub : IDisposable
             if (_hosts.TryGetValue(dir, out var host))
             {
                 if (host.IsLoaded) status = "已加载";
-                else if (host.LoadError != null) status = "加载失败";
+                else if (host.LoadError != null) status = "加载失败：" + host.LoadError;
                 else status = "待加载";
             }
             else
@@ -278,9 +292,11 @@ public sealed class LyricoLyricsHub : IDisposable
     /// <summary>
     /// 多源歌词搜索：对全部启用源并行调用 getLyrics，返回每个命中源的最优歌词
     /// （源目录名 + 显示名 + 歌词）。供歌词搜索页"同时显示多个来源"使用。
+    /// <paramref name="errorCollector"/> 非空时收集各源失败原因（供搜索页状态栏诊断展示）。
     /// </summary>
     public async Task<List<(string Dir, string Name, LrcLyrics Lyrics)>> SearchAllSourcesAsync(
-        string title, string artist, string? album, double durationSeconds, CancellationToken ct = default)
+        string title, string artist, string? album, double durationSeconds, CancellationToken ct = default,
+        ICollection<string>? errorCollector = null)
     {
         EnsureInitialized();
         List<(string Dir, LyricoScriptHost Host)> snapshot;
@@ -293,7 +309,7 @@ public sealed class LyricoLyricsHub : IDisposable
         }
         if (snapshot.Count == 0) return new List<(string, string, LrcLyrics)>();
 
-        var tasks = snapshot.Select(entry => SearchOneAsync(entry.Dir, entry.Host, title, artist, album, durationSeconds, ct)).ToList();
+        var tasks = snapshot.Select(entry => SearchOneAsync(entry.Dir, entry.Host, title, artist, album, durationSeconds, ct, errorCollector)).ToList();
 
         var settled = await Task.WhenAll(tasks).ConfigureAwait(false);
         var result = new List<(string Dir, string Name, LrcLyrics)>();
@@ -310,16 +326,26 @@ public sealed class LyricoLyricsHub : IDisposable
     /// <summary>单源搜索（显式返回类型，避免 async lambda 三元推断失败）。</summary>
     private static async Task<(string Dir, LrcLyrics Lyrics)?> SearchOneAsync(
         string dir, LyricoScriptHost host, string title, string artist, string? album,
-        double durationSeconds, CancellationToken ct)
+        double durationSeconds, CancellationToken ct, ICollection<string>? errorCollector)
     {
         try
         {
             var candidates = await host.GetLyricsAsync(
                 title, artist, album ?? "", (long)(durationSeconds * 1000), ct).ConfigureAwait(false);
+            if (candidates.Count == 0 && host.LoadError != null)
+            {
+                // 引擎装载或脚本执行失败：暴露真实原因而非静默吞掉
+                errorCollector?.Add($"{dir}：{host.LoadError}");
+                return null;
+            }
             var best = PickBest(candidates, title, durationSeconds);
             return best == null ? null : (dir, best);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            errorCollector?.Add($"{dir}：{ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>取某源插件的 manifest（含 ConfigFields，供配置页渲染表单）。</summary>

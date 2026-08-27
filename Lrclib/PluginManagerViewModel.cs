@@ -21,10 +21,33 @@ public partial class PluginManagerViewModel : ObservableObject
 
     public bool HasHub => _hub is not null;
 
+    private bool _warmedUp;
+
     public PluginManagerViewModel(LyricoLyricsHub? hub)
     {
         _hub = hub;
         RefreshSources();
+        WarmUpSources();
+    }
+
+    /// <summary>后台装载全部源脚本后刷新列表——把「待加载」变为真实状态，
+    /// 引擎/脚本装载失败时直接把错误原因显示在状态里（安卓端诊断关键路径）。</summary>
+    private async void WarmUpSources()
+    {
+        var hub = _hub;
+        if (hub == null || _warmedUp) return;
+        _warmedUp = true;
+        try
+        {
+            var dirs = hub.GetSourceInfos().Select(s => s.Dir).ToList();
+            foreach (var dir in dirs)
+                await Task.Run(() => hub.EnsureSourceLoaded(dir));
+            RefreshSources();
+        }
+        catch
+        {
+            // 预载失败不阻塞管理页；错误已记录在各源 LoadError，刷新后可见
+        }
     }
 
     /// <summary>刷新已安装源插件列表（加载/导入/卸载/启停后调用）。</summary>
@@ -105,7 +128,12 @@ public partial class PluginManagerViewModel : ObservableObject
             StatusText = "导入中...";
             var r = await LyricoSourceInstaller.ImportAsync(result.FullPath, hub);
             StatusText = r.Success ? $"{r.Message}（现共 {Sources.Count + 1} 个源）" : r.Message;
-            if (r.Success) RefreshSources();
+            if (r.Success)
+            {
+                RefreshSources();
+                _warmedUp = false;
+                WarmUpSources();
+            }
         }
         catch (Exception ex)
         {
@@ -184,4 +212,7 @@ public partial class PluginSourceItem : ObservableObject
         : $"{Name}（{Status}）";
 
     public string ToggleText => IsEnabled ? "禁用" : "启用";
+
+    /// <summary>是否需要显示状态行（仅失败时显示真实错误，已加载/待加载不打扰）。</summary>
+    public bool HasLoadIssue => Status.StartsWith("加载失败", StringComparison.Ordinal);
 }

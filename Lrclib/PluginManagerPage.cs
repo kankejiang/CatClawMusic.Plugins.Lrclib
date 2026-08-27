@@ -116,6 +116,12 @@ public class PluginManagerPage : ContentPage
         var dir = ThemeHelper.Label(11, FontAttributes.None, "TextSecondaryColor", "#C2C6E4", true);
         dir.SetBinding(Label.TextProperty, nameof(PluginSourceItem.Dir));
 
+        // 加载状态：失败时显示真实错误原因（安卓端引擎/脚本诊断关键路径）
+        var status = ThemeHelper.Label(11, FontAttributes.None, "TextSecondaryColor", "#C2C6E4", true);
+        status.SetBinding(Label.TextProperty, nameof(PluginSourceItem.Status));
+        status.SetBinding(Label.IsVisibleProperty, new Binding(nameof(PluginSourceItem.HasLoadIssue)));
+        status.SetDynamicResource(Label.TextColorProperty, "WarningColor");
+
         var config = MakeButton("配置", nameof(PluginManagerViewModel.OpenConfigCommand));
         config.SetBinding(Button.IsVisibleProperty, nameof(PluginSourceItem.HasConfig));
         var toggle = MakeButton(null, nameof(PluginManagerViewModel.ToggleSourceCommand));
@@ -126,7 +132,7 @@ public class PluginManagerPage : ContentPage
         {
             VerticalOptions = LayoutOptions.Center,
             Spacing = 1,
-            Children = { name, cap, dir },
+            Children = { name, cap, dir, status },
         };
 
         var buttons = new HorizontalStackLayout { Spacing = 6, Children = { config, toggle, test, deleteBtn } };
