@@ -52,8 +52,8 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
     /// <summary>发现页入口显示标题</summary>
     public string EntryTitle => "Lrclib";
 
-    /// <summary>发现页入口图标（Emoji）</summary>
-    public string EntryIcon => "🎵";
+    /// <summary>发现页入口图标（res:// 指向嵌入 DLL 的 PNG，SVG 源在 Lrclib/Assets/entry-icon.svg）</summary>
+    public string EntryIcon => "res://Lrclib.entry-icon.png";
 
     /// <summary>
     /// 创建入口页：宿主音乐库服务可用时以 <see cref="MusicLibraryPage"/> 为入口

@@ -54,6 +54,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 发现页入口图标：PNG 嵌入 DLL，宿主经 res://Lrclib.entry-icon.png 按资源名后缀匹配加载。
+         SVG 是源文件（iconfont 抓取，改色重渲染用），不参与打包。 -->
+    <EmbeddedResource Include="Lrclib\Assets\entry-icon.png" LogicalName="Lrclib.entry-icon.png" />
+    <None Include="Lrclib\Assets\entry-icon.svg" Pack="false" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 客户端只认 .ccp 插件包：构建后把程序集复制为 .ccp 作为发布产物 -->
     <None Include="$(TargetPath)" Pack="false" CopyToOutputDirectory="Never" />
   </ItemGroup>
