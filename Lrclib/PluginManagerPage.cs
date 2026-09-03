@@ -42,6 +42,26 @@ public class PluginManagerPage : ContentPage
         importButton.SetBinding(Button.IsEnabledProperty,
             new Binding(nameof(PluginManagerViewModel.IsBusy)) { Converter = new InverseBooleanConverter(), Source = _vm });
 
+        // 获取更多源插件：跳转 Lyrico-Plugins 项目下载
+        var moreButton = new Button
+        {
+            Text = "获取更多源插件",
+            FontSize = 14,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = ThemeHelper.Color("PrimaryColor", "#8C7BFF"),
+            BackgroundColor = ThemeHelper.Color("PrimaryColor", "#8C7BFF").WithAlpha(0.15f),
+            BorderColor = ThemeHelper.Color("PrimaryColor", "#8C7BFF").WithAlpha(0.5f),
+            BorderWidth = 1,
+            CornerRadius = 14,
+            Padding = new Thickness(16, 8),
+            Margin = new Thickness(16, 8, 16, 0),
+        };
+        moreButton.Clicked += async (_, _) =>
+        {
+            try { await Browser.OpenAsync("https://github.com/Replica0110/Lyrico-Plugins", BrowserLaunchMode.External); }
+            catch { }
+        };
+
         var status = new Label { FontSize = 12, LineBreakMode = LineBreakMode.WordWrap, Margin = new Thickness(16, 8, 16, 0) };
         status.SetDynamicResource(Label.TextColorProperty, "TextSecondaryColor");
         status.SetBinding(Label.TextProperty, nameof(PluginManagerViewModel.StatusText));
@@ -61,13 +81,15 @@ public class PluginManagerPage : ContentPage
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
+                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star),
             },
         };
         root.Add(hint, 0, 0);
         root.Add(importButton, 0, 1);
-        root.Add(status, 0, 2);
-        root.Add(list, 0, 3);
+        root.Add(moreButton, 0, 2);
+        root.Add(status, 0, 3);
+        root.Add(list, 0, 4);
         Content = root;
         WideAdapt.Attach(this);
     }

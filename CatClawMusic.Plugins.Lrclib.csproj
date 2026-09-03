@@ -7,7 +7,7 @@
     <RootNamespace>CatClawMusic.Plugins.Lrclib</RootNamespace>
     <AssemblyName>CatClawMusic.Plugins.Lrclib</AssemblyName>
     <!-- 版本号统一在此维护：三段为主版本（功能），第四段为小更新修订，每次小更新 +1 -->
-    <Version>1.2.0.5</Version>
+    <Version>1.2.0.6</Version>
     <!-- 插件以独立 DLL 交付，不携带依赖（Core/MAUI 由宿主提供） -->
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
   </PropertyGroup>
