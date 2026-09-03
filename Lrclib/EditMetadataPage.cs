@@ -35,6 +35,17 @@ public class EditMetadataPage : ContentPage
         _ = _vm.LoadAsync();
     }
 
+    /// <summary>
+    /// 从搜索页返回时检测文件是否被「写入」过（歌词/封面/元数据直写文件），
+    /// 是则重载标签——否则编辑框仍是旧值，再点「保存」会把旧歌词写回覆盖刚写入的内容。
+    /// </summary>
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        if (TagWriteNotifier.Take(_vm.Song.FilePath))
+            _ = _vm.LoadAsync();
+    }
+
     /// <summary>顶部操作栏：左「搜索」+ 中间标题 + 右「确认」（保存）。</summary>
     private View BuildTopBar()
     {

@@ -39,6 +39,34 @@ internal static class PluginHost
 }
 
 /// <summary>
+/// 标签写入通知：记录「文件已被写入」的路径，供编辑页等返回时检测并重载。
+/// 采用静态消费式标记（Take 后清除），避免事件订阅的生命周期问题。
+/// </summary>
+internal static class TagWriteNotifier
+{
+    private static readonly HashSet<string> _written = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>记录文件已被写入（如统一搜索页「写入」成功后调用）</summary>
+    public static void Raise(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return;
+        lock (_written) _written.Add(filePath);
+    }
+
+    /// <summary>检查并消费标记：该文件自上次检查后是否被写入过</summary>
+    public static bool Take(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        lock (_written)
+        {
+            if (!_written.Contains(filePath)) return false;
+            _written.Remove(filePath);
+            return true;
+        }
+    }
+}
+
+/// <summary>
 /// 插件内部导航助手。
 /// Android 宿主有 Shell，走 Shell 导航栈；Windows 桌面宿主无 Shell，
 /// 且窗口导航（Window.NavigationImpl）不支持非模态 PushAsync，

@@ -377,6 +377,9 @@ public partial class UnifiedSearchViewModel : ObservableObject
                 if (ok)
                 {
                     StatusText = $"已写入：{string.Join(" + ", parts)}";
+                    // 标记文件已写入：编辑标签页返回时据此重载标签，
+                    // 避免内存旧值覆盖刚写入的歌词/封面（数据丢失）
+                    TagWriteNotifier.Raise(Song.FilePath);
                     Applied?.Invoke(this, EventArgs.Empty);
                 }
                 else
