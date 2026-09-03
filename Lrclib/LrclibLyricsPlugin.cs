@@ -17,12 +17,16 @@ namespace CatClawMusic.Plugins.Lrclib;
 /// 也可在该页管理内嵌的 Lyrico 多源歌词插件（导入 .zip / 卸载 / 查看加载状态）。
 /// </para>
 /// <para>
+/// 另实现 <see cref="IMenuContributorPlugin"/>：向宿主播放页「更多」菜单贡献
+/// 「元数据匹配」入口，点击直达当前歌曲的编辑标签页（未安装本插件则不显示该入口）。
+/// </para>
+/// <para>
 /// 数据源：https://lrclib.net（开源、免费、无 API Key），按 歌名/艺人/时长 匹配同步歌词。
 /// LRCLIB 未命中时，回退到内嵌的 Lyrico 多源编排（netease/qq/kugou/soda/apple 的 JS 源插件，
 /// 由用户导入到 AppDataDirectory/Plugin/LyricoSources/）。
 /// </para>
 /// </summary>
-public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
+public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin, IMenuContributorPlugin
 {
     private readonly LrclibApiClient _client = new();
     private readonly OverrideStore _overrideStore = new();
@@ -75,6 +79,30 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
+
+    // ── IMenuContributorPlugin：播放页「更多」菜单的「元数据匹配」入口 ──
+
+    /// <summary>「元数据匹配」菜单项 ID</summary>
+    private const int MenuIdEditMetadata = 1001;
+
+    /// <summary>
+    /// 贡献菜单项：宿主播放页「更多」弹窗据此渲染。
+    /// </summary>
+    public List<MenuItemEntry> GetMenuItems(Song song)
+    {
+        // 仅本地歌曲（有文件路径）可编辑标签
+        if (song == null || string.IsNullOrWhiteSpace(song.FilePath)) return new List<MenuItemEntry>();
+        return new List<MenuItemEntry> { new(MenuIdEditMetadata, "元数据匹配") };
+    }
+
+    /// <summary>
+    /// 菜单点击回调：直达当前歌曲的编辑标签页（含歌词搜索匹配能力）。
+    /// </summary>
+    public async Task OnMenuItemClicked(int itemId, Song song, object fragment)
+    {
+        if (itemId != MenuIdEditMetadata || song == null) return;
+        await PluginNav.PushAsync(new EditMetadataPage(new SongItem(song)));
+    }
 
     public Task ShutdownAsync()
     {
