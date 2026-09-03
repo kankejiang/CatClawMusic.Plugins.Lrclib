@@ -28,6 +28,9 @@ public class SettingsCenterPage : ContentPage
                     $"猫爪音乐 · Lyrico 插件 v{typeof(LyricoUi).Assembly.GetName().Version}"),
                 L(12, FontAttributes.None,
                     "LRCLIB 开放歌词库 + Lyrico 多源歌词兜底\n音乐库浏览 / 标签编辑 / 批量操作 / 源插件管理"),
+                MakeLinkLabel(
+                    "由 Lyrico app 二次开发，所使用的是 Lyrico 插件",
+                    "https://github.com/Replica0110/Lyrico"),
             },
         });
 
@@ -83,6 +86,26 @@ public class SettingsCenterPage : ContentPage
         var l = ThemeHelper.Label(size, weight, "TextPrimaryColor", "#F7F8FF", true);
         l.Text = text;
         return l;
+    }
+
+    /// <summary>关于卡片里的说明行 + 可点击链接（点开 Lyrico 插件页）。</summary>
+    private static View MakeLinkLabel(string text, string url)
+    {
+        var desc = ThemeHelper.Label(12, FontAttributes.None, "TextSecondaryColor", "#C2C6E4", true);
+        desc.Text = text;
+        desc.Margin = new Thickness(0, 6, 0, 0);
+
+        var link = ThemeHelper.Label(12, FontAttributes.None, "PrimaryColor", "#8C7BFF", true);
+        link.Text = url;
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) =>
+        {
+            try { await Browser.OpenAsync(url, BrowserLaunchMode.External); }
+            catch { }
+        };
+        link.GestureRecognizers.Add(tap);
+
+        return new VerticalStackLayout { Spacing = 2, Children = { desc, link } };
     }
 
     /// <summary>设置项入口行：标题 + 副标题 + 箭头，点击导航。</summary>
