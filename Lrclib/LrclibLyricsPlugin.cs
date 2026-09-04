@@ -101,6 +101,9 @@ public class LrclibLyricsPlugin : ILyricsProviderPlugin, IViewContributorPlugin,
     public async Task OnMenuItemClicked(int itemId, Song song, object fragment)
     {
         if (itemId != MenuIdEditMetadata || song == null) return;
+        // 宿主播放页「更多」菜单直入，未经过 CreateEntryPage——先补齐 PluginHost 注入
+        //（插件单例 + 宿主 DI），否则编辑标签页读不到封面/歌词、统一搜索缺 Lyrico 多源。
+        PluginHost.EnsureInjected(_client, _overrideStore, _lyricoHub);
         await PluginNav.PushAsync(new EditMetadataPage(new SongItem(song)));
     }
 

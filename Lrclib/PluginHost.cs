@@ -10,12 +10,40 @@ namespace CatClawMusic.Plugins.Lrclib;
 /// </summary>
 internal static class PluginHost
 {
-    /// <summary>宿主 IServiceProvider（CreateEntryPage 时注入，之后全插件共享）</summary>
+    /// <summary>宿主 IServiceProvider（CreateEntryPage 时注入；直入路径按需兜底，见 <see cref="Get{T}"/>）</summary>
     public static IServiceProvider? Services { get; set; }
 
-    /// <summary>解析宿主服务，解析不到返回 null</summary>
+    /// <summary>解析宿主服务，解析不到返回 null。
+    /// Services 未注入（如宿主播放页「更多」菜单直入编辑/搜索页）时，
+    /// 从当前 MAUI 应用 DI 容器兜底解析宿主服务（IAudioFileService 等）。</summary>
     public static T? Get<T>() where T : class
-        => Services?.GetService(typeof(T)) as T;
+    {
+        if (Services is { } sp)
+        {
+            try { return sp.GetService(typeof(T)) as T; } catch { }
+        }
+        Services ??= ResolveAppServices();
+        try { return Services?.GetService(typeof(T)) as T; } catch { return null; }
+    }
+
+    /// <summary>从当前 MAUI 应用取宿主 DI 容器（跨平台，任何页面/后台上下文可用）。</summary>
+    private static IServiceProvider? ResolveAppServices()
+    {
+        try { return Microsoft.Maui.IPlatformApplication.Current?.Services; }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// 补齐插件注入：宿主播放页「更多」菜单等直入路径（未经过 <see cref="LrclibLyricsPlugin.CreateEntryPage"/>）
+    /// 时调用，注入插件内部单例，保证编辑标签页能读封面/歌词、统一搜索页带上 Lyrico 多源。
+    /// </summary>
+    public static void EnsureInjected(LrclibApiClient? client, OverrideStore? store, Lyrico.LyricoLyricsHub? hub)
+    {
+        LrclibClient ??= client;
+        OverrideStore ??= store;
+        LyricoHub ??= hub;
+        Services ??= ResolveAppServices();
+    }
 
     /// <summary>外部 Lyrico 源插件的目录名（位于宿主 AppDataDirectory 下）。</summary>
     public const string LyricoSourcesDirName = "Plugin/LyricoSources";
