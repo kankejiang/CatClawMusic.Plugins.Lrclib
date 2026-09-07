@@ -54,6 +54,9 @@ internal static class PluginHost
     /// <summary>音频文件读写服务（标签/封面/歌词/重命名/删除）</summary>
     public static IAudioFileService? AudioFiles => Get<IAudioFileService>();
 
+    /// <summary>宿主统一 JS 运行时（Jint）：Lyrico 脚本引擎经此创建（宿主版本过旧时为 null）</summary>
+    public static IJsRuntimeService? JsRuntime => Get<IJsRuntimeService>();
+
     // ── 插件内部单例（CreateEntryPage 时注入，供各页面访问，避免层层传参）──
 
     /// <summary>LRCLIB HTTP 客户端（歌词匹配/批量匹配复用同一实例）</summary>

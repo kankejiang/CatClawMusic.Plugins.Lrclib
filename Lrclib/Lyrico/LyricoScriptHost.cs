@@ -16,6 +16,7 @@ public sealed class LyricoScriptHost
     private readonly string _plugin;
     private readonly LyricoManifest _manifest;
     private readonly LyricoSourceConfigStore _config;
+    private CatClawMusic.Core.Interfaces.IJsRuntimeService? _js;
 
     private Engine? _engine;
     private bool _loaded;
@@ -42,11 +43,27 @@ public sealed class LyricoScriptHost
         lock (_initLock)
         {
             if (_loaded) return true;
-            // 必须在本方法体（无 Jint 类型引用）内先显式装载引擎程序集，
-            // 再进入引用 Jint 类型的 EnsureLoadedLocked——后者的 JIT 需要解析
-            // Jint.Engine，若此时程序集不在 AppDomain 且 AssemblyResolve 链
-            // 未生效（Mono/Android），会直接抛 FileNotFoundException。
-            LyricoScriptEngineLoader.EnsureEngineLoaded();
+            // 必须在本方法体（无 Jint 类型引用）内先确保引擎程序集就绪，
+            // 再进入引用 Jint 类型的 EnsureLoadedLocked——后者的 JIT 需要解析 Jint.Engine。
+            // JS 运行时由宿主统一提供（宿主 DI 的 IJsRuntimeService，Jint/Acornima 随宿主分发）；
+            // 服务缺失（宿主版本过旧）或加载失败时给出明确的升级提示，不静默失败。
+            var js = PluginHost.JsRuntime;
+            if (js == null)
+            {
+                _loadError = "JS 运行时不可用——宿主版本过旧，请升级猫爪音乐后重装本插件";
+                return false;
+            }
+            try
+            {
+                js.EnsureLoaded();
+            }
+            catch (Exception ex)
+            {
+                _loadError = $"JS 运行时加载失败：{ex.Message}";
+                LyricoLog.Warn(_plugin, _loadError);
+                return false;
+            }
+            _js = js;
             return EnsureLoadedLocked();
         }
     }
@@ -63,9 +80,7 @@ public sealed class LyricoScriptHost
                 return false;
             }
 
-            var engine = new Engine(opts => opts
-                .LimitRecursion(5000)
-                .TimeoutInterval(TimeSpan.FromSeconds(10)));
+            var engine = _js!.CreateEngine(TimeSpan.FromSeconds(10));
             engine.Global["Platform"] = JsValue.FromObject(engine, new LyricoPlatform(engine));
             engine.Execute("var console={log:function(){},error:function(){},warn:function(){},info:function(){},debug:function(){},trace:function(){}};");
             engine.Execute(script);
