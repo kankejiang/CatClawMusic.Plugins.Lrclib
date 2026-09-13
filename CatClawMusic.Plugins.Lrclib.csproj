@@ -18,7 +18,7 @@
     <ProjectReference Include="..\CatClawMusic\CatClawMusic.Core\CatClawMusic.Core.csproj" />
     <!-- 手动匹配入口页（IViewContributorPlugin）：纯 C# 代码构建 UI，不用 XAML。
          版本与宿主一致（11.0.0-preview），CopyLocalLockFileAssemblies=false 保证不随插件分发。 -->
-    <PackageReference Include="Microsoft.Maui.Controls" Version="11.0.0-preview.7.26406.9" />
+    <PackageReference Include="Microsoft.Maui.Controls" Version="11.0.0-rc.1.26451.6" />
     <!-- MVVM Toolkit：手动匹配页 ViewModel 使用 ObservableObject/RelayCommand -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <!-- Jint JS 引擎：运行 Lyrico 源插件 .js（多源歌词编排兜底）。
